@@ -1,0 +1,6 @@
+patterns:
+  - 'FATAL: .*'
+  - 'CRITICAL: .*'
+  - 'Exception: .*'
+  - 'Error: .*'
+  - 'psycopg2.OperationalError: .*'
