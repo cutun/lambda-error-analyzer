@@ -1,0 +1,11 @@
+boto3
+requests
+pandas
+python-dateutil
+regex
+openai
+aws-lambda-powertools      # structured logging, metrics, tracing
+tiktoken                   # token counting for prompt size
+pydantic                   # type-safe schemas
+pytest                     # testing framework
+pytest-mock                # mocking boto3/OpenAI
