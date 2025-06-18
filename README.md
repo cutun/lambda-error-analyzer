@@ -38,3 +38,11 @@ Development in progress
 - Minh Tran
 - Eric Wang
 - Hunter Chan
+
+## Alert FLow
+1. fetch raw log
+2. parse the log
+3. detect and summarize
+4. save to dynamoDB
+5. trigger alert
+6. send to sns
