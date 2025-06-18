@@ -39,11 +39,12 @@ Development in progress
 - Eric Wang
 - Hunter Chan
 
-## Alert FLow
-1. fetch raw log
-2. parse the log
-3. detect and summarize
-4. save to dynamoDB
-5. trigger alert
-6. send to sns
-
+## Alert Flow
+```mermaid
+graph TD
+    A{1\. Error Threshold Exceeded?};
+    A -->|Yes| B(2\. Gather Log Data);
+    B --> C(3\. Call AI Service to Generate Summary);
+    C --> D(4\. Assemble Final JSON Alert Payload);
+    D --> E(5\. Store Payload in DynamoDB Table);
+    E --> F([6\. Publish Payload to SNS]);
