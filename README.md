@@ -46,3 +46,4 @@ Development in progress
 4. save to dynamoDB
 5. trigger alert
 6. send to sns
+
