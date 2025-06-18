@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+# S3 Bucket for storing logs 
+Resources: 
+  LogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-${AWS::AccountId}-logs"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption: # Server-side encryption configuration
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration: 
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration: 
+        Rules:
+          - Id: "ExpireOldLogs"
+            Status: Enabled
+            ExpirationInDays: 30 # Automatically expire logs after 30 days
+
+# Dynamo table to store/manage error logs
+  LogTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-error-logs"
+      AttributeDefinitions:
+        - AttributeName: "ServiceID" # partition key
+          AttributeType: "S"
+        - AttributeName: "ErrorTimestamp" # sort key 
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "ServiceID"
+          KeyType: "HASH"
+        - AttributeName: "ErrorTimestamp"
+          KeyType: "RANGE"
+      BillingMode: PAY_PER_REQUEST 
+      TimeToLiveSpecification:
+        AttributeName: "ExpirationTime"
+        Enabled: true
+      PointInTimeRecoverySpecification: # Enable point-in-time recovery
+        PointInTimeRecoveryEnabled: true
+
+  # IAM Role for Lambda function to access S3 and DynamoDB
+  BaseLambdaRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      RoleName: !Sub "${AWS::StackName}-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: # This policy allows Lambda service to assume this role
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies: 
+        - PolicyName: "LambdaS3DynamoDBAccess"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: S3ObjectRW
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${LogBucket}"
+              - Sid: DDBItemCRUD
+                Effect: Allow  
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${LogTable}"
+
+# Outputs section to provide useful information after stack creation
+Outputs:
+  LogBucketName:
+    Description: Name of the S3 bucket for raw logs
+    Value: !Ref LogBucket
+    Export: # Export the bucket name for re-use in other stacks
+      Name: !Sub "${AWS::StackName}-LogBucketName"
+  ErrorTableName:
+    Description: DynamoDB table that stores error records
+    Value: !Ref LogTable
+    Export:
+      Name: !Sub "${AWS::StackName}-ErrorTableName"
+  BaseRoleArn:
+    Description: Re-usable IAM role Arn for Lambda functions
+    Value: !GetAtt BaseLambdaRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-BaseRoleArn"
