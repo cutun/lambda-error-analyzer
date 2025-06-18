@@ -32,7 +32,8 @@ This is a serverless error logging and analysis system built with AWS Lambda, S3
 
 ## Status
 Project planning complete  
-Development in progress
+Development starts: June 16, 2025  
+Submission deadline: June 30, 2025 (AWS Hackathon)
 
 ## Team
 - Minh Tran
