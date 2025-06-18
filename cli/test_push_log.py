@@ -3,7 +3,7 @@ import unittest
 import json
 
 # tests cli/push_log.py
-from push_log import create_log_payload 
+from push_log import create_log_payload, send_log_to_api
 
 class TestLogPayloadBuilder(unittest.TestCase):
 
@@ -39,7 +39,7 @@ class TestLogPayloadBuilder(unittest.TestCase):
         self.assertIn('timestamp', payload)
         self.assertIsInstance(payload['timestamp'], str)
 
-        print("✅ Test passed!")
+        send_log_to_api(payload)
 
 # This allows the test to be run directly
 if __name__ == '__main__':

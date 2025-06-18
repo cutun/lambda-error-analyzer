@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 # No API Gateway yet
-API_ENDPOINT = "https://YOUR_API_GATEWAY_ENDPOINT_HERE/prod/logs"
+API_ENDPOINT = "https://webhook.site/9b4f69af-7a01-4bce-9f52-fe2681e56ce6"
 
 def create_log_payload(log_level, message, details=None):
     """
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     print("--- Log Analyzer Test CLI ---")
     # Create the test payload
     log_to_send = create_log_payload(
-        "CRITICAL",
+        "TEST",
         "NullPointerException in user_authentication.py",
         {"service": "auth-service", "line": 152}
     )
