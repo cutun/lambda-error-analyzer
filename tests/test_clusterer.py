@@ -2,8 +2,8 @@ import pytest
 import yaml
 import os 
 
-from lambda.analyze_logs.clusterer import LogClusterer
-from lambda.analyze_logs.models import LogCluster
+from lambdas.analyze_logs.clusterer import LogClusterer
+from lambdas.analyze_logs.models import LogCluster
 
 # Define the root path to locate test files
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -21,15 +21,11 @@ def log_clusterer() -> LogClusterer:
 
 @pytest.fixture(scope="module")
 def raw_logs() -> list[str]:
-    """
-    Fixture to load sample logs from a text file.
-    Each log entry is separated by a double newline.
-    """
-    logs_path = os.path.join(ROOT_DIR, 'sample_logs.txt')
+    current_dir = os.path.dirname(__file__)  # Points to 'tests/' folder
+    logs_path = os.path.join(current_dir, 'sample_logs.txt')
     with open(logs_path, 'r') as f:
-        # Split by double newline and filter out any empty strings
-        content = f.read()
-        return [log.strip() for log in content.split('\n\n') if log.strip()]
+        logs = f.read().split('\n\n')
+    return logs
 
 
 def test_clustering_groups_correctly(log_clusterer: LogClusterer, raw_logs: list[str]):

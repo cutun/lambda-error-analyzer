@@ -18,7 +18,7 @@ class LogClusterer:
             patterns (List[str]): A list of regex strings used to find the "signature" line in a log.
         """
         # We compile the regex patterns for efficiency
-        self.signature_patterns = [re.compile(p) for p in patterns]
+        self.signature_patterns = [re.compile(p, re.MULTILINE) for p in patterns]
 
     def cluster_logs(self, raw_logs: List[str]) -> List[LogCluster]:
         """
@@ -37,7 +37,7 @@ class LogClusterer:
                 signature=signature,
                 count=len(grouped_logs),
                 log_samples=grouped_logs,
-                representative_log=grouped_logs[0]
+                representative_log=grouped_logs[0],
             )
             log_cluster_list.append(cluster)
 
@@ -45,12 +45,33 @@ class LogClusterer:
 
     def _extract_signature(self, log_message: str) -> str:
         """
-        Extracts a consistent signature by trying each regex pattern in order.
+        Pull out a stable signature.
+        • First handle common bracket-levels ([ERROR]  / [CRITICAL] …).
+        • Then fall back to user-supplied regex patterns.
         """
+        # 1️⃣  generic extraction
+        level_match = re.search(r"\[(CRITICAL|ERROR|WARNING|INFO|DEBUG)]\s+(.*)", log_message)
+        if level_match:
+            level, message = level_match.groups()
+
+            # Ignore low-severity noise
+            if level not in ("CRITICAL", "ERROR", "WARNING"):
+                return ""
+
+            # Special-case: `[ERROR] … Error: <detail>` → want the inner "Error: …"
+            if level == "ERROR":
+                inner = re.search(r"Error:\s+.+", message)
+                if inner:
+                    return inner.group(0).strip()
+
+            # Generic fallback, e.g. “CRITICAL: Core component …”
+            return f"{level}: {message.strip()}"
+
+        # 2️⃣  user-supplied regexes
         for pattern in self.signature_patterns:
             match = pattern.search(log_message)
             if match:
-                # Return the first matching line as the signature
-                return match.group(0).strip()
-        # Return an empty string if no pattern matches
-        return ""
+                # Prefer first capture group if it exists
+                return (match.group(1) if match.groups() else match.group(0)).strip()
+
+        return ""  # no signature → ignored
