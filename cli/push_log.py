@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 # No API Gateway yet
+
 API_ENDPOINT = "https://YOUR_API_GATEWAY_ENDPOINT_HERE/prod/logs"
 
 def create_log_payload(log_level, message, details=None):
