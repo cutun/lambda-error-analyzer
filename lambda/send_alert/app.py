@@ -1,6 +1,6 @@
 import os, json, boto3
 
-sns = boto3.client("sns")
+sns = boto3.client("sns", region_name="us-west-1")
 TOPIC_ARN = os.environ["ALERT_TOPIC"]
 
 def handler(event, context):
