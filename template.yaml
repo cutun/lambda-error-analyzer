@@ -145,7 +145,7 @@ Resources:
         # This subscribes this Lambda to the SNS topic
         SNSEvent:
           Type: SNS
-          TopicArn: !Ref AlertsSNSTopic       
+          Topic: !Ref AlertsSNSTopic       
 
 
 # Outputs section to provide useful information after stack creation
