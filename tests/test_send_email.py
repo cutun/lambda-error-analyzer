@@ -1,14 +1,11 @@
 # send_test_email.py
 import boto3
 from botocore.exceptions import ClientError
-from cli.push_log import create_log_payload
 
 # --- CONFIGURATION ---
 # Use the same email address you verified in the AWS SES Console for both.
 SENDER_EMAIL = "eric20050708@gmail.com"
 RECIPIENT_EMAIL = "eric20050708@gmail.com"
-
-# The AWS Region where you verified your email identity (e.g., "us-east-2").
 AWS_REGION = "us-east-2"
 # ---------------------------------------------
 
@@ -21,9 +18,9 @@ def send_test_email():
     ses_client = boto3.client('ses', region_name=AWS_REGION)
 
     # Email content
-    subject = "Amazon SES Test from Boto3 Script"
+    subject = "Test Email"
     body_text = ("\n"
-        "Lambda-Error-Analyzer Test EMail")
+        "Send Me Skirk Funds")
 
     print(f"Attempting to send an email from {SENDER_EMAIL} to {RECIPIENT_EMAIL}...")
 
