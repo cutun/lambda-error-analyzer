@@ -88,6 +88,7 @@ if __name__ == "__main__":
 
     # IMPORTANT: Fill this in with your verified email address
     my_verified_email = "eric20050708@gmail.com"
+    region = "us-east-2" # change this to the region you verified AWS SSE identity
     
     # 1. Create sample data to simulate the SNS trigger
     fake_event = {
@@ -101,6 +102,7 @@ if __name__ == "__main__":
     # 2. Set the environment variables that the handler needs
     os.environ['RECIPIENT_EMAIL'] = my_verified_email
     os.environ['SENDER_EMAIL'] = my_verified_email
+    os.environ['AWS_REGION'] = region
 
     # 3. Call the handler directly
     try:
@@ -109,3 +111,4 @@ if __name__ == "__main__":
         # 4. Clean up the environment variables
         del os.environ['RECIPIENT_EMAIL']
         del os.environ['SENDER_EMAIL']
+        del os.environ['AWS_REGION']
