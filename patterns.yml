@@ -1,6 +1,6 @@
 patterns:
-  - 'FATAL: .*'
-  - 'CRITICAL: .*'
-  - 'Exception: .*'
-  - 'Error: .*'
-  - 'psycopg2.OperationalError: .*'
+  # Example: Extract the core message from a Python traceback
+  - "Traceback \\(most recent call last\\):\\n.*\\n(.+)"
+  
+  # Example: Find a timeout error
+  - "Connection timed out to host: (\\S+)"

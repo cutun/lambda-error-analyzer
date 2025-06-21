@@ -1,13 +1,15 @@
+# lambda_error_analyzer/lambdas/analyze_logs/clusterer.py
 import re
 from collections import defaultdict
 from typing import List, Dict
 
-# Assuming models.py is in the same directory
+# This model is defined in the same directory.
 from .models import LogCluster
 
 class LogClusterer:
     """
     Groups raw log strings into clusters based on a list of regex patterns.
+    The core logic of this class is independent of the summarization service and remains unchanged.
     """
 
     def __init__(self, patterns: List[str]):
@@ -17,7 +19,7 @@ class LogClusterer:
         Args:
             patterns (List[str]): A list of regex strings used to find the "signature" line in a log.
         """
-        # We compile the regex patterns for efficiency
+        # Compile regex patterns for efficiency
         self.signature_patterns = [re.compile(p, re.MULTILINE) for p in patterns]
 
     def cluster_logs(self, raw_logs: List[str]) -> List[LogCluster]:
@@ -28,6 +30,7 @@ class LogClusterer:
 
         for log in raw_logs:
             signature = self._extract_signature(log)
+            # Only cluster logs that have a valid signature
             if signature:
                 clusters[signature].append(log)
 
@@ -40,17 +43,18 @@ class LogClusterer:
                 representative_log=grouped_logs[0],
             )
             log_cluster_list.append(cluster)
-
-        return log_cluster_list
+        
+        # Sort clusters by count in descending order for clarity
+        return sorted(log_cluster_list, key=lambda c: c.count, reverse=True)
 
     def _extract_signature(self, log_message: str) -> str:
         """
-        Pull out a stable signature.
-        • First handle common bracket-levels ([ERROR]  / [CRITICAL] …).
-        • Then fall back to user-supplied regex patterns.
+        Extracts a stable signature from a log message.
+        1. Handles common bracketed log levels like [ERROR], [CRITICAL].
+        2. Falls back to user-supplied regex patterns for more complex cases.
         """
-        # 1️⃣  generic extraction
-        level_match = re.search(r"\[(CRITICAL|ERROR|WARNING|INFO|DEBUG)]\s+(.*)", log_message)
+        # 1. Generic extraction for standard log levels
+        level_match = re.search(r"\[(CRITICAL|ERROR|WARNING|INFO|DEBUG)\]\s+(.*)", log_message)
         if level_match:
             level, message = level_match.groups()
 
@@ -58,20 +62,21 @@ class LogClusterer:
             if level not in ("CRITICAL", "ERROR", "WARNING"):
                 return ""
 
-            # Special-case: `[ERROR] … Error: <detail>` → want the inner "Error: …"
+            # For ERROR level, try to find a more specific "Error: <detail>" message
             if level == "ERROR":
-                inner = re.search(r"Error:\s+.+", message)
-                if inner:
-                    return inner.group(0).strip()
-
-            # Generic fallback, e.g. “CRITICAL: Core component …”
+                inner_error_match = re.search(r"Error:\s+.+", message)
+                if inner_error_match:
+                    return inner_error_match.group(0).strip()
+            
+            # Generic fallback for CRITICAL or other high-severity levels
             return f"{level}: {message.strip()}"
 
-        # 2️⃣  user-supplied regexes
+        # 2. Fallback to user-supplied regex patterns
         for pattern in self.signature_patterns:
             match = pattern.search(log_message)
             if match:
-                # Prefer first capture group if it exists
+                # Prefer the first capture group if it exists, otherwise use the full match
                 return (match.group(1) if match.groups() else match.group(0)).strip()
-
-        return ""  # no signature → ignored
+        
+        # Return an empty string if no signature can be found
+        return ""
