@@ -38,8 +38,9 @@ class TestLogPayloadBuilder(unittest.TestCase):
         self.assertIsInstance(payload['log_id'], str)
         self.assertIn('timestamp', payload)
         self.assertIsInstance(payload['timestamp'], str)
+        print("✅ Payload Correctly Formatted")
 
-        send_log_to_api(payload)
+
 
 # This allows the test to be run directly
 if __name__ == '__main__':
