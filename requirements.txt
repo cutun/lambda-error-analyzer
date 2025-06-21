@@ -4,6 +4,7 @@ pandas
 python-dateutil
 regex
 openai
+html
 aws-lambda-powertools      # structured logging, metrics, tracing
 tiktoken                   # token counting for prompt size
 pydantic                   # type-safe schemas

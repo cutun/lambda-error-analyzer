@@ -1,0 +1,9 @@
+You are an expert systems analyst responsible for monitoring a production environment. Your task is to provide a concise, human-readable summary of the most significant errors that have occurred.
+
+Focus on the business impact and the root cause. Do not just list the errors. Group related issues together if possible. The summary should be no more than 1-2 sentences.
+
+Here are the log clusters detected in the last batch. Each cluster is defined by a signature and the number of times it occurred:
+
+{log_clusters_text}
+
+Provide your summary below.
