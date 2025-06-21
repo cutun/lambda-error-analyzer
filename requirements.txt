@@ -9,3 +9,6 @@ tiktoken                   # token counting for prompt size
 pydantic                   # type-safe schemas
 pytest                     # testing framework
 pytest-mock                # mocking boto3/OpenAI
+aws-cdk-lib
+constructs
+cdk-nag
