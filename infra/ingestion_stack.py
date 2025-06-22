@@ -93,7 +93,7 @@ class IngestionApiStack(Stack):
         self.analyze_lambda = _lambda.Function(self, "AnalyzeLambda",
             runtime=_lambda.Runtime.PYTHON_3_8,
             handler="analyze_log.handler",  # The handler function in the Lambda code
-            code=_lambda.Code.from_asset("lambda/analyze_log"),
+            code=_lambda.Code.from_asset("lambdas/analyze_log"),
             environment={
                 "RESULTS_TABLE": self.results_table.table_name,
                 "OPENAI_API_KEY": "your_openai_api_key",  # Replace with your OpenAI API key
