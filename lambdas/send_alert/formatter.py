@@ -3,6 +3,24 @@ import json
 from datetime import datetime, timezone
 from html import escape
 
+def format_timestamp(iso_string: str) -> str:
+    """
+    Takes an ISO 8601 timestamp string and converts it to a more
+    human-readable format, e.g., "YYYY-MM-DD HH:MM:SS UTC".
+    Returns the original string if parsing fails.
+    """
+    if not iso_string:
+        return "N/A"
+    try:
+        # Parse the ISO format string into a datetime object
+        # The 'Z' at the end stands for Zulu time, which is UTC.
+        dt_object = datetime.fromisoformat(iso_string.replace('Z', '+00:00'))
+        # Format it into the desired string format
+        return dt_object.strftime('%Y-%m-%d %H:%M:%S %Z')
+    except (ValueError, TypeError):
+        # If parsing fails for any reason, return the original string
+        return iso_string
+    
 def format_html_body(analysis_result: dict) -> str:
     """Takes the full analysis result and builds a final, polished HTML digest email."""
 
@@ -71,8 +89,8 @@ def format_html_body(analysis_result: dict) -> str:
     # --- 2. Simple Syntax Highlighter ---
     def highlight_signature(signature_string):
         s = escape(str(signature_string)) # Use html.escape for security
-        i = s.find(":")
-        category, message = s[:i].strip("[]").upper(), s[i+1:]
+        category, message = s.strip().split(":", 1)
+        category = category.upper()
         category = category.replace("CRITICAL", "<span class='highlight-critical'>Critical:</span>")
         category = category.replace("ERROR", "<span class='highlight-error'>Error:</span>")
         category = category.replace("WARNING", "<span class='highlight-warning'>Warning:</span>")
@@ -88,7 +106,7 @@ def format_html_body(analysis_result: dict) -> str:
         ai_summary_html = f"""
         <div class="ai-summary">
             <div class="ai-summary-header">
-                <span>AI-Generated Summary</span>
+                <span>💡 AI-Generated Summary</span>
             </div>
             <div class="ai-summary-body">
                 {escape(ai_summary)}
@@ -105,10 +123,10 @@ def format_html_body(analysis_result: dict) -> str:
         
         # Add a status icon based on the signature
         status_icon = ""
-        s = signature[:signature.find(":")].strip("[]").upper()
-        if "CRITICAL" in s or "ERROR" in s:
+        level = signature.split(":", 1)[0].upper()
+        if "CRITICAL" in level or "ERROR" in level:
             status_icon = "🔴"
-        elif "WARNING" in s:
+        elif "WARNING" in level:
             status_icon = "🟡"
 
         clusters_html += f"""
@@ -129,7 +147,7 @@ def format_html_body(analysis_result: dict) -> str:
         """
 
     # Footer
-    processed_at = analysis_result.get("processed_at", "N/A")
+    processed_at = format_timestamp(analysis_result.get("processed_at", "N/A"))
     analysis_id = analysis_result.get("analysis_id", "N/A")
     footer_html = f'<div class="footer">Analysis ID: {analysis_id}<br/>Processed At: {processed_at}</div>'
 
@@ -180,8 +198,6 @@ def format_slack_message(analysis_result: dict) -> dict:
         }
     ]
 
-
-
     # Add AI Summary if it exists
     if ai_summary:
         blocks.extend([
@@ -201,21 +217,20 @@ def format_slack_message(analysis_result: dict) -> dict:
         
         # Determine the icon based on the signature
         status_icon = ""
-        level_text = ""
-        if "CRITICAL" in signature.upper() or "ERROR" in signature.upper():
+        level = signature.split(":", 1)[0].capitalize()
+        if "Critical" in level or "Error" in level:
             status_icon = "🔴"
-            level_text = "Error" if "ERROR" in signature.upper() else "Critical"
-        elif "WARNING" in signature.upper():
+        elif "Warning" in level:
             status_icon = "🟡"
-            level_text = "Warning"
+        else:
+            level = f"[{level}]"
 
-        # --- NEW LAYOUT ---
         # This block uses an 'accessory' to place the button on the right.
         blocks.append({
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"{status_icon} *{level_text}:* {signature.split(':', 1)[-1].strip()}"
+                "text": f"{status_icon} *{level}:* {signature.split(':', 1)[-1].strip()}"
             },
             "accessory": {
                 "type": "button",
@@ -242,22 +257,26 @@ def format_slack_message(analysis_result: dict) -> dict:
     # Add the final footer
     blocks.append({
         "type": "context",
-        "elements": [
-            {"type": "mrkdwn", "text": f"Analysis ID: `{analysis_id}`"},
-            {"type": "mrkdwn", "text": f"Processed At: `{timestamp}`"}]
-    })
-
+        "elements": [{"type": "mrkdwn", "text": f"Analysis ID: `{analysis_id}`\nProcessed At: `{format_timestamp(timestamp)}`"}]})
     return {"blocks": blocks}
+
 
 def format_text_body(analysis_result: dict) -> str:
     """Creates a plain text version of the digest email."""
     total_clusters = analysis_result.get("total_clusters_found", 0)
-    text = f"Log Analysis Digest: {total_clusters} unique error patterns found.\n\n"
+    total_logs = analysis_result.get("total_logs_processed", 0)
+    analysis_id = analysis_result.get("analysis_id", "N/A")
+    timestamp = format_timestamp(analysis_result.get("processed_at", "N/A"))
+
+    text = f"Log Analysis Digest: {total_clusters} unique error patterns found across {total_logs} total logs.\n\n"
     
     for i, cluster in enumerate(analysis_result.get("clusters", [])):
         text += f"--- Cluster #{i+1} ---\n"
         text += f"Signature: {cluster.get('signature', 'N/A')}\n"
         text += f"Count: {cluster.get('count', 0)}\n"
         text += f"Representative Log: {cluster.get('representative_log', 'N/A')}\n\n"
+    
+    text += f"Analysis ID: {analysis_id}"
+    text += f"Processed At: {timestamp}"
         
     return text
