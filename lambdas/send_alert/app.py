@@ -36,33 +36,27 @@ def handler(event, context):
     """
     This is the main function that runs in AWS Lambda.
     """
-    AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
-    RECIPIENT_EMAIL = [email.strip() for email in os.environ['RECIPIENT_EMAIL'].split(",")]
-    SENDER_EMAIL = os.environ['SENDER_EMAIL']
+    AWS_REGION = os.environ.get('AWS_REGION', 'us-east-2')
+    RECIPIENT_EMAIL = [email.strip() for email in os.environ.get('RECIPIENT_EMAIL').split(",")]
+    SENDER_EMAIL = os.environ.get('SENDER_EMAIL')
     SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL')
 
-    event = json.loads(event)
+    message_string = event['Records'][0]['Sns']['Message']
+    alert_data = json.loads(message_string)
     
     # Re-initialize client inside handler to be safe in different environments
     ses_client = boto3.client('ses', region_name=AWS_REGION)
     ssm_client = boto3.client('ssm', region_name=AWS_REGION)
+
+    # For reading subscription list in future
     dynamodb_resource = boto3.resource('dynamodb')
 
-    for record in event.get('Records', []):
-        # Only care about new analysis results being inserted
-        if record.get('eventName') != 'INSERT':
-            continue
-        new_image = record['dynamodb'].get('NewImage')
-        if not new_image:
-            continue
-        alert_data = unmarshall_dynamodb_item(new_image)
-        if SLACK_WEBHOOK_URL:
-            # param = ssm_client.get_parameter(Name=SLACK_WEBHOOK_URL, WithDecryption=True)
-            # webhook_url = param['Parameter']['Value']
-            slack_payload = format_slack_message(alert_data)
-            response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
-            response.raise_for_status()
-        
+    if SLACK_WEBHOOK_URL:
+        slack_payload = format_slack_message(alert_data)
+        response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
+        response.raise_for_status()
+    
+    if SENDER_EMAIL and RECIPIENT_EMAIL:
         send_formatted_email(ses_client, alert_data, SENDER_EMAIL, RECIPIENT_EMAIL) 
 
     return {"statusCode": 200, "body": "Alert processed."}
@@ -72,39 +66,19 @@ def handler(event, context):
 import json
 from boto3.dynamodb.types import TypeSerializer
 
-def create_dynamodb_stream_event(new_item_dict: dict) -> dict:
+def create_fake_event(new_item_dict: dict) -> dict:
     """
-    Takes a standard Python dictionary, marshalls it into DynamoDB format,
-    and wraps it in a realistic DynamoDB Stream 'INSERT' event structure.
+    Takes a standard Python dictionary, marshalls it into Sns format.
     """
-    serializer = TypeSerializer()
-
-    # 1. Marshall the Python dict into DynamoDB's format
-    dynamodb_json = {k: serializer.serialize(v) for k, v in new_item_dict.items()}
-
-    # 2. Wrap it in the full event envelope
+    # Wrap it in the full event envelope
     fake_event = {
-        "Records": [
-            {
-                "eventID": "a1b2c3d4e5f67890",
-                "eventName": "INSERT", # Critical for your handler's logic
-                "eventVersion": "1.1",
-                "eventSource": "aws:dynamodb",
-                "awsRegion": "us-east-1",
-                "dynamodb": {
-                    "ApproximateCreationDateTime": 1672531200,
-                    "Keys": {
-                        # In a real event, the primary key would be here
-                        "analysis_id": dynamodb_json.get("analysis_id")
-                    },
-                    "NewImage": dynamodb_json, # <-- Your marshalled data goes here
-                    "SequenceNumber": "111122223333",
-                    "SizeBytes": 1024,
-                    "StreamViewType": "NEW_IMAGE"
-                },
-                "eventSourceARN": "arn:aws:dynamodb:us-east-1:..."
+        "Records": [{
+            "Sns":{
+                "Type": "Notification",
+                "Subject": "This is a test subject",
+                "Message":json.dumps(new_item_dict)
             }
-        ]
+        }]
     }
     return fake_event
 
@@ -158,7 +132,7 @@ if __name__ == "__main__":
         "gsi1pk": "ANALYSIS_RESULT"
     }
 
-    fake_event = create_dynamodb_stream_event(fake_json)
+    fake_event = create_fake_event(fake_json)
 
     # 2. Set the environment variables that the handler needs
     os.environ['RECIPIENT_EMAIL'] = recipient
