@@ -79,9 +79,10 @@ def format_html_body(analysis_result: dict) -> str:
         }
         pre, code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 14px;}
         pre { margin: 10px 0 0 0; padding: 10px; background-color: #f6f8fa; border-radius: 6px; white-space: pre-wrap; word-wrap: break-word; }
-        .highlight-critical, .highlight-error { color: #d73a49; font-weight: bold; }
-        .highlight-error, .highlight-error { color: #d73a49; font-weight: bold; }
-        .highlight-warning { color: #b08800; font-weight: bold; }
+        .highlight-critical, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
+        .highlight-error, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
+        .highlight-warning { color: #b08800; font-weight: bold; font-size: 18px}
+        .highlight-general { color: #4a4a4a; font-weight: bold; font-size: 18px}
         .footer { text-align: center; font-size: 14px; color: #6a737d; padding: 20px; }
     </style>
     """
@@ -89,12 +90,14 @@ def format_html_body(analysis_result: dict) -> str:
     # --- 2. Simple Syntax Highlighter ---
     def highlight_signature(signature_string):
         s = escape(str(signature_string)) # Use html.escape for security
-        category, message = s.strip().split(":", 1)
-        category = category.upper()
-        category = category.replace("CRITICAL", "<span class='highlight-critical'>Critical:</span>")
-        category = category.replace("ERROR", "<span class='highlight-error'>Error:</span>")
-        category = category.replace("WARNING", "<span class='highlight-warning'>Warning:</span>")
-        return category + message
+        category = s.upper()
+        if any(keyword in category for keyword in ("CRITICAL", "ERROR", "WARNING")):
+            category = category.replace("CRITICAL", "<span class='highlight-critical'>Critical</span>")
+            category = category.replace("ERROR", "<span class='highlight-error'>Error</span>")
+            category = category.replace("WARNING", "<span class='highlight-warning'>Warning</span>")
+        else:
+            category = f"<span class='highlight-general'>{category}</span>"
+        return category
 
 
     # --- 3. Build HTML Components ---
@@ -123,7 +126,7 @@ def format_html_body(analysis_result: dict) -> str:
         
         # Add a status icon based on the signature
         status_icon = ""
-        level = signature.split(":", 1)[0].upper()
+        level = signature.upper()
         if "CRITICAL" in level or "ERROR" in level:
             status_icon = "🔴"
         elif "WARNING" in level:
@@ -217,7 +220,7 @@ def format_slack_message(analysis_result: dict) -> dict:
         
         # Determine the icon based on the signature
         status_icon = ""
-        level = signature.split(":", 1)[0].capitalize()
+        level = signature.capitalize()
         if "Critical" in level or "Error" in level:
             status_icon = "🔴"
         elif "Warning" in level:
@@ -230,7 +233,7 @@ def format_slack_message(analysis_result: dict) -> dict:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"{status_icon} *{level}:* {signature.split(':', 1)[-1].strip()}"
+                "text": f"{status_icon} *{level}*"
             },
             "accessory": {
                 "type": "button",
