@@ -1,15 +1,14 @@
-boto3
-requests
-pandas
-python-dateutil
-regex
-openai
-html
+aws-cdk-lib
 aws-lambda-powertools      # structured logging, metrics, tracing
-tiktoken                   # token counting for prompt size
+boto3
+cdk-nag
+constructs
+pandas
 pydantic                   # type-safe schemas
+pydantic_settings
 pytest                     # testing framework
 pytest-mock                # mocking boto3/OpenAI
-aws-cdk-lib
-constructs
-cdk-nag
+python-dateutil
+regex
+requests
+tiktoken                   # token counting for prompt size

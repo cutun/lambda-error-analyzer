@@ -11,7 +11,7 @@ from .bedrock_summarizer import BedrockSummarizer
 
 # --- Configuration ---
 LOG_PATTERNS = [
-    r"Error:\s+.*",
+    r"ERROR:\s+.*",
     r"CRITICAL:\s+.*"
 ]
 
