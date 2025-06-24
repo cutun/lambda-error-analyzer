@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 boto3
 requests
 pandas
@@ -5,11 +6,25 @@ python-dateutil
 regex
 openai
 html
+=======
+aws-cdk-lib
+>>>>>>> p3/alert-pipeline
 aws-lambda-powertools      # structured logging, metrics, tracing
-tiktoken                   # token counting for prompt size
+boto3
+cdk-nag
+constructs
+pandas
 pydantic                   # type-safe schemas
+pydantic_settings
 pytest                     # testing framework
 pytest-mock                # mocking boto3/OpenAI
+<<<<<<< HEAD
 aws-cdk-lib
 constructs
 cdk-nag
+=======
+python-dateutil
+regex
+requests
+tiktoken                   # token counting for prompt size
+>>>>>>> p3/alert-pipeline

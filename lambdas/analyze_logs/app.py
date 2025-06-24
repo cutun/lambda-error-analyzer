@@ -11,6 +11,7 @@ from .models import LogAnalysisResult, get_settings
 from .clusterer import LogClusterer
 from .bedrock_summarizer import BedrockSummarizer
 
+<<<<<<< HEAD
 # --- Initialize S3 client outside the handler for reuse ---
 s3_client = boto3.client('s3')
 
@@ -29,6 +30,7 @@ def get_logs_from_s3(bucket: str, key: str) -> List[str]:
         print(f"Error getting logs from S3 bucket '{bucket}', key '{key}': {e}")
         # Return an empty list to prevent the Lambda from crashing
         return []
+
 
 def handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     """
@@ -59,8 +61,8 @@ def handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
         return {"statusCode": 200, "body": json.dumps("Log file empty.")}
 
     # --- DYNAMIC CONFIGURATION: Load regex patterns from an environment variable ---
-    # The value should be a comma-separated string, e.g., "Error: .*,CRITICAL: .*"
-    patterns_str = os.environ.get('LOG_PATTERNS', r"Error:\s+.*,CRITICAL:\s+.*")
+    # The value should be a comma-separated string, e.g., "ERROR: .*,CRITICAL: .*"
+    patterns_str = os.environ.get('LOG_PATTERNS', r"ERROR:\s+.*,CRITICAL:\s+.*")
     log_patterns = patterns_str.split(',')
     
     # 1. Cluster the logs
