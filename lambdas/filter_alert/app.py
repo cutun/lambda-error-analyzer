@@ -40,14 +40,7 @@ def handler(event, context):
     This handler is triggered by a DynamoDB Stream, filters the result,
     and publishes it to a final SNS topic if it contains recurring errors.
     """
-<<<<<<< HEAD
     print("--- FilterAlert Lambda Triggered ---")
-=======
-    AWS_REGION = os.environ.get('AWS_REGION', 'us-east-2')
-    SNS_TOPIC_ARN = os.environ['FINAL_ALERTS_TOPIC_ARN']
-    sns_client = boto3.client('sns', region_name=AWS_REGION)
-    dynamodb_resource = boto3.resource('dynamodb', region_name=AWS_REGION)
->>>>>>> c59758037a1e2e8d136c953ca7e701f2f01acdca
 
     # Initialize the SNS client inside the handler for testability
     sns = boto3.client('sns')
@@ -94,21 +87,5 @@ def handler(event, context):
             print(f"  -> ❌ Error processing record: {e}")
             # Continue to the next record in the batch
             continue
-<<<<<<< HEAD
 
     return {"statusCode": 200, "body": "Filter process complete."}
-=======
-        new_image = record['dynamodb'].get('NewImage')
-        if not new_image:
-            continue
-        alert_data = unmarshall_dynamodb_item(new_image)
-        filtered_alert_data = filter_alert(alert_data)
-        if not filtered_alert_data.get("clusters"):
-            continue
-        sns_client.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Message=json.dumps(filtered_alert_data),
-            Subject="Action Required: Recurring Error Patterns Detected"
-        )
-    return {"statusCode": 200, "body": "Alert filtered."}
->>>>>>> c59758037a1e2e8d136c953ca7e701f2f01acdca
