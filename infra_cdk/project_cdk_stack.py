@@ -39,10 +39,22 @@ class ProjectCdkStack(Stack):
         )
 
         # === STAGE 1: Ingestion ===
-        raw_logs_bucket = s3.Bucket(self, "RawLogsBucket", 
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True
-        )
+        raw_logs_bucket = s3.Bucket(self, "RawLogBucket",
+            removal_policy=RemovalPolicy.DESTROY, # Automatically delete the bucket when the stack is destroyed 
+            auto_delete_objects=True,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL, # Block public access to the bucket
+            versioned=True,  # Enable versioning to keep track of changes
+            encryption=s3.BucketEncryption.S3_MANAGED,  # Enable server-side encryption
+            object_ownership=s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,  # Ensure bucket owner has full control
+            # Lifecycle rules to manage log retention
+            lifecycle_rules=[
+                s3.LifecycleRule(
+                    id="LogRetention",
+                    enabled=True,
+                    expiration=s3.Duration.days(30),  # Automatically delete objects after 30 days
+                )
+            ]
+        )  
         
         ingest_log_function = _lambda.Function(self, "IngestLogFunction",
             runtime=_lambda.Runtime.PYTHON_3_12,
