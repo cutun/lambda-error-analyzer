@@ -26,9 +26,9 @@ def handler(event, context):
     This is the main function that runs in AWS Lambda.
     """
     AWS_REGION = os.environ.get('AWS_REGION', 'us-east-2')
-    FINAL_ALERTS_TOPIC_ARN = os.environ['FINAL_ALERTS_TOPIC_ARN']
+    SNS_TOPIC_ARN = os.environ['FINAL_ALERTS_TOPIC_ARN']
     sns_client = boto3.client('sns', region_name=AWS_REGION)
-    dynamodb_resource = boto3.resource('dynamodb')
+    dynamodb_resource = boto3.resource('dynamodb', region_name=AWS_REGION)
 
     payload = ""
     for record in event.get('Records', []):
@@ -43,7 +43,7 @@ def handler(event, context):
         if not filtered_alert_data.get("clusters"):
             continue
         sns_client.publish(
-            TopicArn=FINAL_ALERTS_TOPIC_ARN,
+            TopicArn=SNS_TOPIC_ARN,
             Message=json.dumps(filtered_alert_data),
             Subject="Action Required: Recurring Error Patterns Detected"
         )

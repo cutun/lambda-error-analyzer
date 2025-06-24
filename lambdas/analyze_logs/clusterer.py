@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import List, Dict
 
 # This model is defined in the same directory.
-from .models import LogCluster
+from models import LogCluster
 
 class LogClusterer:
     """

@@ -5,11 +5,12 @@ import boto3
 import os
 import urllib.parse
 from typing import Dict, Any, List
+from datetime import datetime, timedelta
 
 # Import helper classes and models from other files in this directory
-from .models import LogAnalysisResult, get_settings
-from .clusterer import LogClusterer
-from .bedrock_summarizer import BedrockSummarizer
+from models import LogAnalysisResult, get_settings
+from clusterer import LogClusterer
+from bedrock_summarizer import BedrockSummarizer
 
 # --- Initialize S3 client outside the handler for reuse ---
 s3_client = boto3.client('s3')
@@ -78,7 +79,8 @@ def handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
         summary=summary_text,
         total_logs_processed=len(raw_logs),
         total_clusters_found=len(log_clusters),
-        clusters=log_clusters
+        clusters=log_clusters,
+        ttl_expiry=int((datetime.now() + timedelta(hours=48)).timestamp())
     )
     
     # 4. Persist the result to DynamoDB
