@@ -11,7 +11,6 @@ from .models import LogAnalysisResult, get_settings
 from .clusterer import LogClusterer
 from .bedrock_summarizer import BedrockSummarizer
 
-<<<<<<< HEAD
 # --- Initialize S3 client outside the handler for reuse ---
 s3_client = boto3.client('s3')
 
