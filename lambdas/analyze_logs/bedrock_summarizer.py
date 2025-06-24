@@ -7,6 +7,10 @@ from pathlib import Path
 import os
 
 # Assuming models.py and its get_settings function are in the same directory
+<<<<<<< HEAD
+=======
+from models import LogCluster, get_settings
+>>>>>>> c59758037a1e2e8d136c953ca7e701f2f01acdca
 
 class BedrockSummarizer:
     """

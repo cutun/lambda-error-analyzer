@@ -5,9 +5,16 @@ import boto3
 import os
 import urllib.parse
 from typing import Dict, Any, List
+<<<<<<< HEAD
 from datetime import datetime, timedelta, timezone
 
 # Import helper classes and models from other files in this directory
+=======
+from datetime import datetime, timedelta
+
+# Import helper classes and models from other files in this directory
+from models import LogAnalysisResult, get_settings
+>>>>>>> c59758037a1e2e8d136c953ca7e701f2f01acdca
 from clusterer import LogClusterer
 from bedrock_summarizer import BedrockSummarizer
 
@@ -73,6 +80,7 @@ def handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     summary_text = summarizer.summarize_clusters(log_clusters)
 
     # 3. Assemble the final analysis result object
+<<<<<<< HEAD
     analysis_result = {
         "analysis_id": str(uuid.uuid4()),
         "summary": summary_text,
@@ -82,6 +90,16 @@ def handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
         "ttl_expiry": int((datetime.now(timezone.utc) + timedelta(hours=48)).timestamp()),
         "processed_at": str(datetime.now(timezone.utc))
     }
+=======
+    analysis_result = LogAnalysisResult(
+        analysis_id=str(uuid.uuid4()),
+        summary=summary_text,
+        total_logs_processed=len(raw_logs),
+        total_clusters_found=len(log_clusters),
+        clusters=log_clusters,
+        ttl_expiry=int((datetime.now() + timedelta(hours=48)).timestamp())
+    )
+>>>>>>> c59758037a1e2e8d136c953ca7e701f2f01acdca
     
     # 4. Persist the result to DynamoDB
     try:

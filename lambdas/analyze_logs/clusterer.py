@@ -65,6 +65,11 @@ class ExtractSignature:
         return f"UNCLASSIFIED:{_hash(_normalise(line))}"
 
 
+<<<<<<< HEAD
+=======
+# This model is defined in the same directory.
+from models import LogCluster
+>>>>>>> c59758037a1e2e8d136c953ca7e701f2f01acdca
 
 class LogClusterer:
     """
