@@ -4,9 +4,9 @@ import json
 from typing import List
 from botocore.exceptions import BotoCoreError, ClientError
 from pathlib import Path
+import os
 
 # Assuming models.py and its get_settings function are in the same directory
-from models import LogCluster, get_settings
 
 class BedrockSummarizer:
     """
@@ -17,29 +17,28 @@ class BedrockSummarizer:
         """
         Initializes the Bedrock client and loads the prompt template from a file.
         """
-        settings = get_settings()
         # Initialize the Bedrock Runtime client
         try:
             self.bedrock_runtime = boto3.client(
                 service_name='bedrock-runtime',
-                region_name=settings.aws_region
+                region_name=os.environ.get("AWS_REGION")
             )
         except (BotoCoreError, ClientError) as e:
             print(f"Error initializing Bedrock client: {e}")
             self.bedrock_runtime = None
 
-        self.model_id = settings.bedrock_model_id
+        self.model_id = os.environ.get("BEDROCK_MODEL_ID")
 
         # Load the summarization prompt from an external file
         try:
             project_root = Path(__file__).resolve().parents[2]
-            prompt_path = project_root / "prompts" / "summarization_prompt.txt"
+            prompt_path = "summarization_prompt.txt"
             with open(prompt_path, 'r') as f:
                 self.prompt_template = f.read()
         except FileNotFoundError:
             self.prompt_template = "Error: Prompt file 'prompts/summarization_prompt.txt' not found."
 
-    def summarize_clusters(self, clusters: List[LogCluster]) -> str:
+    def summarize_clusters(self, clusters: List[dict]) -> str:
         """
         Generates a summary for a list of LogCluster objects using Bedrock.
         """
@@ -89,10 +88,10 @@ class BedrockSummarizer:
             return f"Received an invalid or unexpected response format from Bedrock API: {e}. Response: {response_body_str}"
 
     @staticmethod
-    def _format_clusters_for_prompt(clusters: List[LogCluster]) -> str:
+    def _format_clusters_for_prompt(clusters: List[dict]) -> str:
         """
         Formats the log clusters into a string for the summarization prompt.
         """
-        sorted_clusters = sorted(clusters, key=lambda c: c.count, reverse=True)
-        formatted_lines = [f'- Signature: "{c.signature}", Occurrences: {c.count}' for c in sorted_clusters]
+        sorted_clusters = sorted(clusters, key=lambda c: c["count"], reverse=True)
+        formatted_lines = [f'- Signature: "{c["signature"]}", Occurrences: {c["count"]}' for c in sorted_clusters]
         return "\n".join(formatted_lines)

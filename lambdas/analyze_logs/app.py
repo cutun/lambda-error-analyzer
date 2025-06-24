@@ -5,10 +5,9 @@ import boto3
 import os
 import urllib.parse
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Import helper classes and models from other files in this directory
-from models import LogAnalysisResult, get_settings
 from clusterer import LogClusterer
 from bedrock_summarizer import BedrockSummarizer
 
@@ -74,24 +73,25 @@ def handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     summary_text = summarizer.summarize_clusters(log_clusters)
 
     # 3. Assemble the final analysis result object
-    analysis_result = LogAnalysisResult(
-        analysis_id=str(uuid.uuid4()),
-        summary=summary_text,
-        total_logs_processed=len(raw_logs),
-        total_clusters_found=len(log_clusters),
-        clusters=log_clusters,
-        ttl_expiry=int((datetime.now() + timedelta(hours=48)).timestamp())
-    )
+    analysis_result = {
+        "analysis_id": str(uuid.uuid4()),
+        "summary": summary_text,
+        "total_logs_processed": len(raw_logs),
+        "total_clusters_found": len(log_clusters),
+        "clusters": log_clusters,
+        "ttl_expiry": int((datetime.now(timezone.utc) + timedelta(hours=48)).timestamp()),
+        "processed_at": str(datetime.now(timezone.utc))
+    }
     
     # 4. Persist the result to DynamoDB
     try:
-        settings = get_settings()
-        dynamodb = boto3.resource('dynamodb', region_name=settings.aws_region)
-        table = dynamodb.Table(settings.dynamodb_table_name)
+        dynamodb = boto3.resource('dynamodb', region_name=os.environ.get("AWS_REGION"))
+        table = dynamodb.Table(os.environ.get("DYNAMODB_TABLE_NAME"))
         
-        analysis_dict = analysis_result.model_dump(mode='json')
-        table.put_item(Item=analysis_dict)
-        print(f"Successfully saved analysis {analysis_result.analysis_id} to DynamoDB.")
+        # analysis_dict = analysis_result.model_dump(mode='json')
+        table.put_item(Item=analysis_result)
+        print(f"Successfully saved analysis {analysis_result["analysis_id"]} to DynamoDB.")
+        print(f"Saved Analysis: {json.dumps(analysis_result)}")
 
     except Exception as e:
         print(f"Error saving to DynamoDB: {e}")
@@ -100,5 +100,5 @@ def handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     # The final JSON output is returned by the Lambda
     return {
         "statusCode": 200,
-        "body": analysis_result.model_dump_json(indent=2)
+        "body": json.dumps(analysis_result, indent=2)
     }

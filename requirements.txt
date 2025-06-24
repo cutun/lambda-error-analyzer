@@ -4,8 +4,6 @@ boto3
 cdk-nag
 constructs
 pandas
-pydantic
-pydantic_settings
 pytest                     # testing framework
 pytest-mock                # mocking boto3/OpenAI
 python-dateutil

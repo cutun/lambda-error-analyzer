@@ -17,16 +17,7 @@ def create_log_entry_string(log_level, message, details=None) -> str:
     """
     if details is None:
         details = {}
-    
-    log_dict = {
-        "log_id": str(uuid.uuid4()),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "level": log_level,
-        "message": message,
-        "details": details
-    }
-    # Convert the dictionary to a JSON string
-    return json.dumps(log_dict)
+    return f"[{datetime.now(timezone.utc).isoformat()}][{log_level.upper()}]: {message} Details: {json.dumps(details)}"
 
 def send_log_batch_to_api(log_batch_string: str):
     """
@@ -78,7 +69,7 @@ if __name__ == "__main__":
     )
 
     # 2. Join the logs together with a double newline, just as the analyzer expects
-    log_batch = f"{log1}\n\n{log2}\n\n{log3}\n\n"
+    log_batch = f"{log1}\n\n{log2}\n\n{log3}"
     
     # 3. Send the complete batch to the API
     send_log_batch_to_api(log_batch)
