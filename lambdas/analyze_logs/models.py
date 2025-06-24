@@ -47,6 +47,7 @@ class LogAnalysisResult(BaseModel):
     total_logs_processed: int = Field(..., description="Total number of raw log entries processed.")
     total_clusters_found: int = Field(..., description="Total number of distinct error clusters found.")
     clusters: List[LogCluster] = Field(..., description="A list of all log clusters identified.")
+    ttl_expiry: int = Field(..., description="Time at which log gets deleted.")
 
     # --- Fields for sorting and indexing ---
     processed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
