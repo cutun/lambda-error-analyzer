@@ -1,0 +1,12 @@
+aws-cdk-lib
+aws-lambda-powertools      # structured logging, metrics, tracing
+boto3
+cdk-nag
+constructs
+pandas
+pytest                     # testing framework
+pytest-mock                # mocking boto3/OpenAI
+python-dateutil
+regex
+requests
+tiktoken                   # token counting for prompt size
