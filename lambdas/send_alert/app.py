@@ -36,16 +36,27 @@ def handler(event, context):
     """
     This is the main function that runs in AWS Lambda.
     """
+<<<<<<< HEAD
     AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
     RECIPIENT_EMAIL = [email.strip() for email in os.environ['RECIPIENT_EMAIL'].split(",")]
     SENDER_EMAIL = os.environ['SENDER_EMAIL']
     SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL')
 
     event = json.loads(event)
+=======
+    AWS_REGION = os.environ.get('AWS_REGION', 'us-east-2')
+    RECIPIENT_EMAIL = [email.strip() for email in os.environ.get('RECIPIENT_EMAIL').split(",")]
+    SENDER_EMAIL = os.environ.get('SENDER_EMAIL')
+    SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL')
+
+    message_string = event['Records'][0]['Sns']['Message']
+    alert_data = json.loads(message_string)
+>>>>>>> p3/alert-pipeline
     
     # Re-initialize client inside handler to be safe in different environments
     ses_client = boto3.client('ses', region_name=AWS_REGION)
     ssm_client = boto3.client('ssm', region_name=AWS_REGION)
+<<<<<<< HEAD
     dynamodb_resource = boto3.resource('dynamodb')
 
     for record in event.get('Records', []):
@@ -63,6 +74,18 @@ def handler(event, context):
             response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
             response.raise_for_status()
         
+=======
+
+    # For reading subscription list in future
+    dynamodb_resource = boto3.resource('dynamodb')
+
+    if SLACK_WEBHOOK_URL:
+        slack_payload = format_slack_message(alert_data)
+        response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
+        response.raise_for_status()
+    
+    if SENDER_EMAIL and RECIPIENT_EMAIL:
+>>>>>>> p3/alert-pipeline
         send_formatted_email(ses_client, alert_data, SENDER_EMAIL, RECIPIENT_EMAIL) 
 
     return {"statusCode": 200, "body": "Alert processed."}
@@ -72,6 +95,7 @@ def handler(event, context):
 import json
 from boto3.dynamodb.types import TypeSerializer
 
+<<<<<<< HEAD
 def create_dynamodb_stream_event(new_item_dict: dict) -> dict:
     """
     Takes a standard Python dictionary, marshalls it into DynamoDB format,
@@ -105,6 +129,21 @@ def create_dynamodb_stream_event(new_item_dict: dict) -> dict:
                 "eventSourceARN": "arn:aws:dynamodb:us-east-1:..."
             }
         ]
+=======
+def create_fake_event(new_item_dict: dict) -> dict:
+    """
+    Takes a standard Python dictionary, marshalls it into Sns format.
+    """
+    # Wrap it in the full event envelope
+    fake_event = {
+        "Records": [{
+            "Sns":{
+                "Type": "Notification",
+                "Subject": "This is a test subject",
+                "Message":json.dumps(new_item_dict)
+            }
+        }]
+>>>>>>> p3/alert-pipeline
     }
     return fake_event
 
@@ -158,7 +197,11 @@ if __name__ == "__main__":
         "gsi1pk": "ANALYSIS_RESULT"
     }
 
+<<<<<<< HEAD
     fake_event = create_dynamodb_stream_event(fake_json)
+=======
+    fake_event = create_fake_event(fake_json)
+>>>>>>> p3/alert-pipeline
 
     # 2. Set the environment variables that the handler needs
     os.environ['RECIPIENT_EMAIL'] = recipient
