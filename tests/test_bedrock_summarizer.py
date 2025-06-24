@@ -39,11 +39,12 @@ def test_summarize_clusters_with_mock_bedrock(mock_boto_client, mock_file_open, 
     mock_bedrock_runtime = MagicMock()
     mock_boto_client.return_value = mock_bedrock_runtime
 
-    # The response body from Bedrock is a stream, so we mock its read() method
+    # --- FIX: The mock response now matches the format the real Bedrock API sends ---
+    # It uses 'content' and 'text' keys, which our main code now expects.
     mock_response_body = MagicMock()
     mock_response_body.read.return_value = json.dumps({
-        "results": [{
-            "outputText": "The system experienced 2 critical billing failures and 2 authentication errors."
+        "content": [{
+            "text": "The system experienced 2 critical billing failures and 2 authentication errors."
         }]
     })
     
@@ -62,8 +63,8 @@ def test_summarize_clusters_with_mock_bedrock(mock_boto_client, mock_file_open, 
     # Verify the prompt sent to Bedrock
     call_args = mock_bedrock_runtime.invoke_model.call_args
     request_body = json.loads(call_args.kwargs['body'])
-    assert 'CRITICAL: Core component' in request_body['inputText']
-    assert 'Error: Invalid credentials.' in request_body['inputText']
+    assert 'CRITICAL: Core component' in request_body['messages'][0]['content']
+    assert 'Error: Invalid credentials.' in request_body['messages'][0]['content']
 
 
 @patch('lambdas.analyze_logs.bedrock_summarizer.get_settings')
