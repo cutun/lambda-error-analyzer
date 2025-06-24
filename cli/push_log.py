@@ -1,50 +1,84 @@
-# cli/push_log.py
+import os
 import requests
 import json
 import uuid
 from datetime import datetime, timezone
+from dotenv import load_dotenv
 
-# No API Gateway yet
-API_ENDPOINT = "https://webhook.site/9b4f69af-7a01-4bce-9f52-fe2681e56ce6"
+# Load environment variables from a .env file for local testing
+load_dotenv()
 
-def create_log_payload(log_level, message, details=None):
+# Get the API Gateway endpoint URL from an environment variable
+API_ENDPOINT = os.environ.get("LOG_API")
+
+def create_log_entry_string(log_level, message, details=None) -> str:
     """
-    Creates the dictionary for the log payload.
-    This is pure logic and easy to test.
+    Creates a single log entry as a JSON formatted string.
     """
-    if details is None: details = {}
-
-    return {
+    if details is None:
+        details = {}
+    
+    log_dict = {
         "log_id": str(uuid.uuid4()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "level": log_level,
         "message": message,
         "details": details
     }
+    # Convert the dictionary to a JSON string
+    return json.dumps(log_dict)
 
-def send_log_to_api(payload):
+def send_log_batch_to_api(log_batch_string: str):
     """
-    Sends a pre-formatted payload to the API.
-    This is the part that handles the network request.
+    Sends a string containing one or more logs to the API.
     """
-    print("Attempting to send log:")
-    print(json.dumps(payload, indent=2))
+    if not API_ENDPOINT:
+        print("❌ ERROR: LOG_API environment variable not set. Please create a .env file.")
+        return
+
+    print("--- Attempting to send log batch ---")
+    print(log_batch_string)
+    print("------------------------------------")
+    
     try:
-        response = requests.post(API_ENDPOINT, json=payload, timeout=10)
+        # Send the raw string as data with the correct Content-Type
+        response = requests.post(
+            API_ENDPOINT,
+            data=log_batch_string.encode('utf-8'), # Encode the string to bytes
+            headers={'Content-Type': 'text/plain'},
+            timeout=10
+        )
         response.raise_for_status()
-        print("\n✅ Success! Log sent.")
+        print("\n✅ Success! Log batch sent.")
         print(f"Status Code: {response.status_code}")
+        print(f"Response Body: {response.json()}")
+
     except requests.exceptions.RequestException as e:
-        print(f"\n❌ Failed to send log (this is expected until the API is deployed).")
+        print(f"\n❌ Failed to send log batch.")
         print(f"Error: {e}")
 
 if __name__ == "__main__":
     print("--- Log Analyzer Test CLI ---")
-    # Create the test payload
-    log_to_send = create_log_payload(
-        "TEST",
+
+    # 1. Create a list of individual log strings
+    log1 = create_log_entry_string(
+        "CRITICAL",
         "NullPointerException in user_authentication.py",
         {"service": "auth-service", "line": 152}
     )
-    # Send it to the API
-    send_log_to_api(log_to_send)
+    log2 = create_log_entry_string(
+        "CRITICAL",
+        "Database connection failed: timeout expired.",
+        {"service": "db-connector", "retry_attempts": 3}
+    )
+    log3 = create_log_entry_string(
+        "WARNING",
+        "API response time exceeded threshold.",
+        {"service": "billing-api", "response_ms": 2500}
+    )
+
+    # 2. Join the logs together with a double newline, just as the analyzer expects
+    log_batch = f"{log1}\n\n{log2}\n\n{log3}\n\n"
+    
+    # 3. Send the complete batch to the API
+    send_log_batch_to_api(log_batch)

@@ -6,7 +6,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from pathlib import Path
 
 # Assuming models.py and its get_settings function are in the same directory
-from .models import LogCluster, get_settings
+from models import LogCluster, get_settings
 
 class BedrockSummarizer:
     """

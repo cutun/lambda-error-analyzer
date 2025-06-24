@@ -1,13 +1,70 @@
-import json, os, boto3, uuid, datetime as dt
-from utils import put_log_object
+import os
+import json
+import boto3
+import uuid
+from datetime import datetime, timezone
 
-s3 = boto3.client("s3")
-BUCKET = os.environ["LOG_BUCKET"]
+def handler(event, context):
+    """
+    This function is triggered by an API Gateway request.
+    Its sole purpose is to take the incoming log data from the request body
+    and save it as a new object in the designated S3 bucket.
+    """
+    print("--- Ingest Log Lambda Triggered ---")
 
-def handler(event, context):  # API Gateway v2 HTTP
-    body = json.loads(event["body"])
-    log_lines = body.get("logs", [])
-    timestamp = dt.datetime.utcnow().isoformat()
-    key = f"{timestamp}_{uuid.uuid4()}.json"
-    put_log_object(s3, BUCKET, key, log_lines)
-    return {"statusCode": 200, "body": json.dumps({"key": key})}
+    # Get the target S3 bucket name from an environment variable.
+    # This is set in the CDK/SAM template.
+    try:
+        raw_logs_bucket = os.environ['RAW_LOGS_BUCKET_NAME']
+    except KeyError:
+        print("❌ FATAL: RAW_LOGS_BUCKET_NAME environment variable not set.")
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": "Server configuration error."})
+        }
+
+    # The actual log data is in the 'body' of the event from API Gateway
+    try:
+        log_body = event.get('body')
+        if not log_body:
+            print("⚠️ Warning: Request body is empty.")
+            return {
+                "statusCode": 400,
+                "body": json.dumps({"error": "Request body cannot be empty."})
+            }
+
+        # Generate a unique filename for the log object using a timestamp and UUID
+        # Example: 2025/06/23/18/log-a1b2c3d4.json
+        current_time = datetime.now(timezone.utc)
+        key_prefix = current_time.strftime('%Y/%m/%d/%H')
+        unique_id = uuid.uuid4()
+        s3_key = f"{key_prefix}/log-{unique_id}.txt"
+
+        # Initialize the S3 client
+        s3 = boto3.client('s3')
+
+        print(f"Uploading log to s3://{raw_logs_bucket}/{s3_key}")
+
+        # Upload the log data to S3
+        s3.put_object(
+            Bucket=raw_logs_bucket,
+            Key=s3_key,
+            Body=log_body,
+            ContentType='text/plain'
+        )
+
+        print("✅ Log successfully ingested and saved to S3.")
+
+    except Exception as e:
+        print(f"❌ An error occurred during ingestion: {e}")
+        # In a real app, you might send this failure to a dead-letter queue
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": "Failed to process log."})
+        }
+
+    # Return a success response to the API Gateway
+    return {
+        "statusCode": 202, # 202 Accepted is a good status code for asynchronous processing
+        "body": json.dumps({"status": "Log accepted for processing", "s3_key": s3_key})
+    }
