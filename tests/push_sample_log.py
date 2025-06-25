@@ -74,6 +74,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Loop through all the file paths provided and send each one
+    # Loop through all the file paths provided and send each one, choose 100 random log from each
     for file_path in args.log_files:
-        send_log_file_to_api(file_path, 2000)
+        send_log_file_to_api(file_path, 100)
