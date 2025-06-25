@@ -1,47 +1,48 @@
 # lambda_error_analyzer/lambdas/analyze_logs/bedrock_summarizer.py
-import boto3
 import json
-from typing import List
-from botocore.exceptions import BotoCoreError, ClientError
 from pathlib import Path
-import os
+from typing import List
 
-# Assuming models.py and its get_settings function are in the same directory
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
+from models import LogCluster, get_settings
+
 
 class BedrockSummarizer:
-    """
-    Uses AWS Bedrock to generate a natural-language summary of log clusters.
-    """
 
     def __init__(self):
-        """
-        Initializes the Bedrock client and loads the prompt template from a file.
-        """
-        # Initialize the Bedrock Runtime client
+        settings = get_settings()
+
         try:
             self.bedrock_runtime = boto3.client(
-                service_name='bedrock-runtime',
-                region_name=os.environ.get("AWS_REGION")
+                service_name="bedrock-runtime",
+                region_name=settings.aws_region,
             )
         except (BotoCoreError, ClientError) as e:
             print(f"Error initializing Bedrock client: {e}")
             self.bedrock_runtime = None
 
-        self.model_id = os.environ.get("BEDROCK_MODEL_ID")
+        self.model_id = settings.bedrock_model_id
 
-        # Load the summarization prompt from an external file
         try:
             project_root = Path(__file__).resolve().parents[2]
             prompt_path = "summarization_prompt.txt"
-            with open(prompt_path, 'r') as f:
+            with open(prompt_path, "r") as f:
                 self.prompt_template = f.read()
         except FileNotFoundError:
-            self.prompt_template = "Error: Prompt file 'prompts/summarization_prompt.txt' not found."
+            self.prompt_template = (
+                "Error: Prompt file 'prompts/summarization_prompt.txt' not found."
+            )
 
+    #  Public API
     def summarize_clusters(self, clusters: List[dict]) -> str:
         """
-        Generates a summary for a list of LogCluster objects using Bedrock.
+        Generates an English summary of the supplied `LogCluster` objects using
+        the configured Bedrock model.  Falls back to a deterministic summary if
+        the API is unavailable or the response cannot be parsed.
         """
+        # Basic guards
         if not self.bedrock_runtime:
             return "Bedrock client is not initialized. Cannot generate summary."
         if not clusters:
@@ -49,49 +50,135 @@ class BedrockSummarizer:
         if "Error:" in self.prompt_template:
             return self.prompt_template
 
+        # Compose the user prompt
         log_clusters_text = self._format_clusters_for_prompt(clusters)
-        prompt = self.prompt_template.format(log_clusters_text=log_clusters_text)
+        user_prompt = self.prompt_template.format(log_clusters_text=log_clusters_text)
+        system_prompt = (
+            "You are an expert systems analyst.  Provide a concise, actionable "
+            "summary of these production error clusters."
+        )
 
-        # --- FINAL FIX: Corrected the body to match the specific model's requirements ---
-        # The API rejected 'max_tokens' as an extraneous key. We remove it and let the model
-        # use its default output length, which is usually sufficient for a summary.
-        body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        })
+        # Build & send request
+        body_json = json.dumps(
+            self._build_request_body(system_prompt, user_prompt),
+            separators=(",", ":"),
+        )
 
         try:
             response = self.bedrock_runtime.invoke_model(
-                body=body,
                 modelId=self.model_id,
-                accept='application/json',
-                contentType='application/json'
+                body=body_json,
+                accept="application/json",
+                contentType="application/json",
             )
-            response_body = json.loads(response.get('body').read())
-            summary = response_body.get('content')[0].get('text')
-            
-            return summary.strip() if summary else "Failed to generate a valid summary from Bedrock."
 
-        except (ClientError, BotoCoreError) as e:
-            return f"Error communicating with Bedrock API: {e}"
-        except (KeyError, IndexError, TypeError) as e:
-            response_body_str = "unavailable"
-            try:
-                response_body_str = json.dumps(response_body)
-            except NameError:
-                pass
-            return f"Received an invalid or unexpected response format from Bedrock API: {e}. Response: {response_body_str}"
+            response_body = json.loads(response["body"].read())
+            summary_text = self._extract_text(response_body)
+
+            if summary_text:
+                return summary_text.strip()
+            else:
+                raise ValueError("No assistant text found in response.")
+
+        except (BotoCoreError, ClientError, ValueError, KeyError, TypeError) as e:
+            print(f"Bedrock API problem: {e}.  Falling back to basic summary.")
+            return self.generate_fallback_summary(clusters)
+
+    #  Helpers: request / response
+    def _build_request_body(self, system_prompt: str, user_prompt: str) -> dict:
+        """
+        Return the exact JSON payload required by the current `model_id`.
+        * Amazon Nova → `schemaVersion: messages-v1`, `inferenceConfig`
+        * Anthropic Claude → top-level OpenAI-style keys
+        """
+        if self.model_id.startswith("amazon.nova"):
+            return {
+                "schemaVersion": "messages-v1",
+                "system": [{"text": system_prompt}],
+                "messages": [
+                    {"role": "user", "content": [{"text": user_prompt}]}
+                ],
+                "inferenceConfig": {
+                    "maxTokens": 300,
+                    "temperature": 0.5,
+                    "topP": 0.9,
+                },
+            }
+        else:  # default to Claude-family schema
+            return {
+                "system": system_prompt,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": user_prompt}],
+                    }
+                ],
+                "max_tokens": 300,
+                "temperature": 0.5,
+                "top_p": 0.9,
+                "anthropic_version": "bedrock-2023-05-31",
+            }
+
+    def _extract_text(self, body: dict) -> str | None:
+        """
+        Extract the assistant’s reply text regardless of provider envelope.
+        """
+        # Amazon Nova (InvokeModel)
+        if "output" in body:
+            blocks = (
+                body.get("output", {})
+                .get("message", {})
+                .get("content", [])
+            )
+            for block in blocks:
+                if isinstance(block, dict) and block.get("text"):
+                    return block["text"]
+
+        # Claude-family (Anthropic)
+        if isinstance(body.get("content"), list):
+            first = body["content"][0]
+            if isinstance(first, dict) and first.get("text"):
+                return first["text"]
+
+        return None
+
+    #  Helpers: log-specific
+    @staticmethod
+    def _format_clusters_for_prompt(clusters: list) -> str:
+        """
+        Accepts a list of dicts **or** LogCluster dataclass instances and returns
+        a human-readable block for the Claude prompt.
+        """
+        # small utility so we can handle both styles seamlessly
+        def get_attr(obj, key):
+            return obj[key] if isinstance(obj, dict) else getattr(obj, key)
+
+        # sort by occurrence count, descending
+        sorted_clusters = sorted(clusters, key=lambda c: get_attr(c, "count"), reverse=True)
+
+        # one line per cluster
+        lines = [
+            f'- Signature: "{get_attr(c, "signature")}", Occurrences: {get_attr(c, "count")}'
+            for c in sorted_clusters
+        ]
+        return "\n".join(lines)
 
     @staticmethod
-    def _format_clusters_for_prompt(clusters: List[dict]) -> str:
+    def generate_fallback_summary(clusters: List[dict]) -> str:
         """
-        Formats the log clusters into a string for the summarization prompt.
+        Deterministic summary used when Bedrock cannot be reached or parsed.
         """
-        sorted_clusters = sorted(clusters, key=lambda c: c["count"], reverse=True)
-        formatted_lines = [f'- Signature: "{c["signature"]}", Occurrences: {c["count"]}' for c in sorted_clusters]
-        return "\n".join(formatted_lines)
+        if not clusters:
+            return "No errors detected."
+
+        total_errors = sum(c["count"] for c in clusters)
+        num_signatures = len(clusters)
+        most_common = clusters[0]
+
+        return (
+            "AI summary failed. Basic Analysis: "
+            f"Found {total_errors} errors across {num_signatures} unique signatures. "
+            f"The most common error ({most_common["count"]} times) was: "
+            f"'{most_common["signature"]}'."
+        )
+    

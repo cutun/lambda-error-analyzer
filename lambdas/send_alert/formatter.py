@@ -2,6 +2,37 @@
 import json
 from datetime import datetime, timezone
 from html import escape
+from collections import defaultdict
+import re
+
+
+table = {
+        "CRITICAL": "🔴",   # Red for severe
+        "ERROR":    "🔴",   # Red for severe
+        "WARNING":  "🟡",   # Yellow for caution
+        "INFO":     "🔵",   # Blue for information
+        "DEBUG":    "⚙️",   # Gear for technical/debug
+        "SERVICE":  "🔧",   # Wrench for service messages
+    }
+
+def get_icon(level):
+    level = level.upper()
+    for keyword, icon in table.items():
+        if keyword in level:
+            return icon
+    return "⚪️"
+
+def parse_signature(signature):
+    split_signature = signature.split(":", 1)
+    category = split_signature[0].strip().upper()
+    message = f"{split_signature[1].strip()}" if len(split_signature)==2 else ""
+    for keyword in table.keys():
+        if keyword in category:
+            level = keyword
+            break
+    else:
+        level = category
+    return level, message
 
 def format_timestamp(iso_string: str) -> str:
     """
@@ -79,26 +110,26 @@ def format_html_body(analysis_result: dict) -> str:
         }
         pre, code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 14px;}
         pre { margin: 10px 0 0 0; padding: 10px; background-color: #f6f8fa; border-radius: 6px; white-space: pre-wrap; word-wrap: break-word; }
-        .highlight-critical, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
         .highlight-error, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
+        .highlight-critical, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
         .highlight-warning { color: #b08800; font-weight: bold; font-size: 18px}
+        .highlight-info {color: #007bff; font-weight: bold; font-size: 18px;}
+        .highlight-debug {color: #6c757d; font-weight: normal; font-size: 18px;}
+        .highlight-service { color: #6f42c1; font-weight: bold; font-size: 18px;}
         .highlight-general { color: #4a4a4a; font-weight: bold; font-size: 18px}
-        .footer { text-align: center; font-size: 14px; color: #6a737d; padding: 20px; }
+        .footer { text-align: center; font-size: 14px; color: #6a737d; padding: 20px;}
     </style>
     """
 
     # --- 2. Simple Syntax Highlighter ---
     def highlight_signature(signature_string):
-        s = escape(str(signature_string)) # Use html.escape for security
-        category = s.upper()
-        if any(keyword in category for keyword in ("CRITICAL", "ERROR", "WARNING")):
-            category = category.replace("CRITICAL", "<span class='highlight-critical'>Critical</span>")
-            category = category.replace("ERROR", "<span class='highlight-error'>Error</span>")
-            category = category.replace("WARNING", "<span class='highlight-warning'>Warning</span>")
+        s = escape(signature_string) # Use html.escape for security
+        level, message = parse_signature(s)
+        if level in table.keys():
+            category = f"<span class='highlight-{level.lower()}'>{level.upper()}{": " if message else ""}</span>"
         else:
-            category = f"<span class='highlight-general'>{category}</span>"
-        return category
-
+            category = f"<span class='highlight-general'>{level}{": " if message else ""}</span>"
+        return category + message
 
     # --- 3. Build HTML Components ---
 
@@ -124,13 +155,8 @@ def format_html_body(analysis_result: dict) -> str:
         count = cluster.get("count", 0)
         rep_log = cluster.get("representative_log", "N/A")
         
-        # Add a status icon based on the signature
-        status_icon = ""
-        level = signature.upper()
-        if "CRITICAL" in level or "ERROR" in level:
-            status_icon = "🔴"
-        elif "WARNING" in level:
-            status_icon = "🟡"
+        level, message = parse_signature(signature)
+        status_icon = get_icon(level)
 
         clusters_html += f"""
         <div class="cluster-card">
@@ -148,6 +174,7 @@ def format_html_body(analysis_result: dict) -> str:
             </div>
         </div>
         """
+    
 
     # Footer
     processed_at = format_timestamp(analysis_result.get("processed_at", "N/A"))
@@ -219,21 +246,15 @@ def format_slack_message(analysis_result: dict) -> dict:
         rep_log = cluster.get("representative_log", "N/A")
         
         # Determine the icon based on the signature
-        status_icon = ""
-        level = signature.capitalize()
-        if "Critical" in level or "Error" in level:
-            status_icon = "🔴"
-        elif "Warning" in level:
-            status_icon = "🟡"
-        else:
-            level = f"[{level}]"
+        level, message = parse_signature(signature)
+        status_icon = get_icon(level)
 
         # This block uses an 'accessory' to place the button on the right.
         blocks.append({
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"{status_icon} *{level}*"
+                "text": f"{status_icon} *{level}{":" if message else ""}* {message}"
             },
             "accessory": {
                 "type": "button",

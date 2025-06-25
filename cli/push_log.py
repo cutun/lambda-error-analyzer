@@ -37,7 +37,7 @@ def send_log_batch_to_api(log_batch_string: str):
             API_ENDPOINT,
             data=log_batch_string.encode('utf-8'), # Encode the string to bytes
             headers={'Content-Type': 'text/plain'},
-            timeout=10
+            timeout=20
         )
         response.raise_for_status()
         print("\n✅ Success! Log batch sent.")
@@ -54,7 +54,7 @@ if __name__ == "__main__":
     # 1. Create a list of individual log strings
     log1 = create_log_entry_string(
         "CRITICAL",
-        "NullPointerException in user_authentication.py",
+        "NullPointerException in user_authentication.py.",
         {"service": "auth-service", "line": 152}
     )
     log2 = create_log_entry_string(

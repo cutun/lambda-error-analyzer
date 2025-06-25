@@ -52,12 +52,42 @@ def handler(event, context):
     # For reading subscription list in future
     dynamodb_resource = boto3.resource('dynamodb')
 
-    if SLACK_WEBHOOK_URL:
-        slack_payload = format_slack_message(alert_data)
-        response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
-        response.raise_for_status()
-    
-    if SENDER_EMAIL and RECIPIENT_EMAIL:
-        send_formatted_email(ses_client, alert_data, SENDER_EMAIL, RECIPIENT_EMAIL) 
+    try:
+        # 1. Parse the incoming event from SNS
+        print("Parsing message from SNS event...")
+        message_string = event['Records'][0]['Sns']['Message']
+        analysis_result = json.loads(message_string)
+        print(f"Successfully parsed analysis result for ID: {analysis_result.get('analysis_id')}")
+        
+        # --- Slack Notification Logic ---
+        if SLACK_WEBHOOK_URL:
+            try:
+                print("Formatting and sending Slack message...")
+                slack_payload = format_slack_message(analysis_result)
+                print("slack payload to send:", slack_payload)
+                response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
+                response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+                print("✅ Message sent to Slack successfully.")
+            except Exception as e:
+                # Log the error but don't stop the function
+                print(f"⚠️ Could not send Slack notification: {e}")
+        else:
+            print("ℹ️ SLACK_WEBHOOK_URL not set. Skipping Slack notification.")
+
+        # --- Email Notification Logic ---
+        if SENDER_EMAIL and RECIPIENT_EMAIL:
+            try:
+                print(f"Formatting and sending email to: {RECIPIENT_EMAIL}")
+                send_formatted_email(ses_client, analysis_result, SENDER_EMAIL, RECIPIENT_EMAIL)
+                print("✅ Email sent successfully.")
+            except Exception as e:
+                print(f"⚠️ Could not send email notification: {e}")
+        else:
+            print("ℹ️ Email variables not set. Skipping email notification.")
+
+    except (KeyError, IndexError, TypeError) as e:
+        print(f"❌ CRITICAL ERROR: Could not parse the incoming SNS event. Check the event structure. Error: {e}")
+        # Re-raise the error to mark this Lambda execution as failed
+        raise e
 
     return {"statusCode": 200, "body": "Alert processed."}

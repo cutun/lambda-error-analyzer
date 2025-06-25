@@ -3,6 +3,7 @@ aws-lambda-powertools      # structured logging, metrics, tracing
 boto3
 cdk-nag
 constructs
+dotenv
 pandas
 pytest                     # testing framework
 pytest-mock                # mocking boto3/OpenAI

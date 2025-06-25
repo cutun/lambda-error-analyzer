@@ -49,12 +49,16 @@ class ProjectCdkStack(Stack):
             code=_lambda.Code.from_asset("lambdas/ingest_log"),
             handler="app.handler",
             environment={"RAW_LOGS_BUCKET_NAME": raw_logs_bucket.bucket_name},
+            memory_size=512,
             layers=[common_layer]
         )
         raw_logs_bucket.grant_write(ingest_log_function)
         
         http_api = apigw.HttpApi(self, "LogIngestionApi",
-            default_integration=apigw_integrations.HttpLambdaIntegration("IngestionIntegration", handler=ingest_log_function)
+            default_integration=apigw_integrations.HttpLambdaIntegration(
+                "IngestionIntegration",
+                handler=ingest_log_function
+            )
         )
 
         # === STAGE 2: Analysis ===
@@ -75,6 +79,7 @@ class ProjectCdkStack(Stack):
                 "DYNAMODB_TABLE_NAME": log_table.table_name,
                 "BEDROCK_MODEL_ID": "amazon.nova-micro-v1:0"
             },
+            memory_size=512,
             layers=[common_layer]
         )
         log_table.grant_write_data(analyze_log_function)
@@ -90,6 +95,7 @@ class ProjectCdkStack(Stack):
             code=_lambda.Code.from_asset("lambdas/filter_alert"),
             handler="app.handler",
             environment={"FINAL_ALERTS_TOPIC_ARN": final_alerts_topic.topic_arn},
+            memory_size=512,
             layers=[common_layer]
         )
         final_alerts_topic.grant_publish(filter_alert_function)
@@ -106,6 +112,7 @@ class ProjectCdkStack(Stack):
                 "SENDER_EMAIL": sender_email_param.value_as_string,
                 "SLACK_WEBHOOK_URL": slack_param_name.value_as_string
             },
+            memory_size=512,
             layers=[common_layer]
         )
         send_alert_function.add_to_role_policy(iam.PolicyStatement(actions=["ses:SendEmail", "ses:SendRawEmail"], resources=["*"]))

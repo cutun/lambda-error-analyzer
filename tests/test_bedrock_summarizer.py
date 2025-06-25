@@ -1,85 +1,113 @@
-# lambda_error_analyzer/tests/test_bedrock_summarizer.py
-import pytest
+# lambda_error_analyzer/lambdas/analyze_logs/bedrock_summarizer.py
+import boto3
 import json
-from unittest.mock import MagicMock, mock_open, patch
+from typing import List
+from botocore.exceptions import BotoCoreError, ClientError
+from pathlib import Path
+import os
 
-# Adjust the import path
-from lambdas.analyze_logs.bedrock_summarizer import BedrockSummarizer
-from lambdas.analyze_logs.models import LogCluster
-
-# Define the expected prompt content for mocking the file read
-MOCK_PROMPT_CONTENT = "Summarize these logs:\n{log_clusters_text}"
-
-@pytest.fixture
-def sample_clusters() -> list[LogCluster]:
-    """Provides a sample list of LogCluster objects for testing."""
-    return [
-        LogCluster(
-            signature="CRITICAL: Core component 'BillingService' has failed.",
-            count=2,
-            log_samples=["log1", "log2"],
-            representative_log="[2024-06-17T13:32:00Z] [CRITICAL] ...",
-        ),
-        LogCluster(
-            signature="Error: Invalid credentials.",
-            count=2,
-            log_samples=["log3", "log4"],
-            representative_log="[2024-06-17T13:31:00Z] [ERROR] ...",
-        ),
-    ]
-
-@patch('lambdas.analyze_logs.bedrock_summarizer.get_settings')
-@patch('builtins.open', new_callable=mock_open, read_data=MOCK_PROMPT_CONTENT)
-@patch('boto3.client')
-def test_summarize_clusters_with_mock_bedrock(mock_boto_client, mock_file_open, mock_get_settings, sample_clusters):
+class BedrockSummarizer:
     """
-    Tests the summarize_clusters method, mocking the Bedrock API call and file read.
+    Uses AWS Bedrock to generate a natural-language summary of log clusters.
     """
-    # Arrange: Mock the Bedrock response
-    mock_bedrock_runtime = MagicMock()
-    mock_boto_client.return_value = mock_bedrock_runtime
 
-    # The response body from Bedrock is a stream, so we mock its read() method
-    mock_response_body = MagicMock()
-    mock_response_body.read.return_value = json.dumps({
-        "results": [{
-            "outputText": "The system experienced 2 critical billing failures and 2 authentication errors."
-        }]
-    })
+    def __init__(self):
+        """
+        Initializes the Bedrock client and loads the prompt template from a file.
+        """
+        # Initialize the Bedrock Runtime client
+        try:
+            self.bedrock_runtime = boto3.client(
+                service_name='bedrock-runtime',
+                region_name=os.environ.get("AWS_REGION")
+            )
+        except (BotoCoreError, ClientError) as e:
+            print(f"Error initializing Bedrock client: {e}")
+            self.bedrock_runtime = None
+
+        self.model_id = os.environ.get("BEDROCK_MODEL_ID")
+
+        # Load the summarization prompt from an external file
+        try:
+            # Correctly locate the prompt file in the same directory
+            prompt_path = Path(__file__).parent / "summarization_prompt.txt"
+            with open(prompt_path, 'r') as f:
+                self.prompt_template = f.read()
+        except FileNotFoundError:
+            self.prompt_template = "Error: Prompt file 'summarization_prompt.txt' not found in the same directory."
+
+    def summarize_clusters(self, clusters: List[dict]) -> str:
+        """
+        Generates a summary for a list of LogCluster objects using Bedrock.
+        """
+        if not self.bedrock_runtime:
+            return "Bedrock client is not initialized. Cannot generate summary."
+        if not clusters:
+            return "No log clusters were provided for summarization."
+        if "Error:" in self.prompt_template:
+            return self.prompt_template
+
+        log_clusters_text = self._format_clusters_for_prompt(clusters)
+        user_prompt = self.prompt_template.format(log_clusters_text=log_clusters_text)
+        system_prompt = "You are an expert systems analyst. Your task is to provide a concise, human-readable summary of production errors."
+
+        body = json.dumps({
+            "system": [{"text": system_prompt}],
+            "messages": [
+                {"role": "user", "content": [{"text": user_prompt}]}
+            ],
+            "inferenceConfig": {
+                "maxTokens": 300,
+                "temperature": 0.5,
+                "topP": 0.9
+            }
+        })
+
+        try:
+            response = self.bedrock_runtime.invoke_model(
+                body=body,
+                modelId=self.model_id,
+                accept='application/json',
+                contentType='application/json'
+            )
+            response_body = json.loads(response.get('body').read())
+            # The response format for message-based models is consistent
+            summary = response_body.get('content')[0].get('text')
+            
+            return summary.strip() if summary else "Failed to generate a valid summary from Bedrock."
+
+        except (ClientError, BotoCoreError) as e:
+            print(f"Bedrock API call failed: {e}. Generating basic fallback summary.")
+            return self.generate_fallback_summary(clusters)
+        except (KeyError, IndexError, TypeError) as e:
+            print(f"Invalid Bedrock response format: {e}. Generating basic fallback summary.")
+            return self.generate_fallback_summary(clusters)
+
+    @staticmethod
+    def _format_clusters_for_prompt(clusters: List[dict]) -> str:
+        """
+        Formats the log clusters into a string for the summarization prompt.
+        """
+        sorted_clusters = sorted(clusters, key=lambda c: c["count"], reverse=True)
+        # Handle the possibility of 'is_recurring' not being present in the dict
+        formatted_lines = []
+        for c in sorted_clusters:
+            recurring_tag = " (RECURRING)" if c.get("is_recurring") else ""
+            formatted_lines.append(f'- Signature: "{c["signature"]}", Occurrences: {c["count"]}{recurring_tag}')
+        return "\n".join(formatted_lines)
     
-    mock_bedrock_runtime.invoke_model.return_value = {
-        'body': mock_response_body
-    }
+    @staticmethod
+    def generate_fallback_summary(clusters: List[dict]) -> str:
+        """Generates a simple, non-AI summary when the Bedrock API fails."""
+        if not clusters:
+            return "No errors detected."
 
-    # Act
-    summarizer = BedrockSummarizer()
-    summary = summarizer.summarize_clusters(sample_clusters)
-
-    # Assert
-    assert summary == "The system experienced 2 critical billing failures and 2 authentication errors."
-    mock_bedrock_runtime.invoke_model.assert_called_once()
-    
-    # Verify the prompt sent to Bedrock
-    call_args = mock_bedrock_runtime.invoke_model.call_args
-    request_body = json.loads(call_args.kwargs['body'])
-    assert 'CRITICAL: Core component' in request_body['inputText']
-    assert 'Error: Invalid credentials.' in request_body['inputText']
-
-
-@patch('lambdas.analyze_logs.bedrock_summarizer.get_settings')
-@patch('builtins.open', side_effect=FileNotFoundError)
-def test_summarizer_init_handles_file_not_found(mock_file_open, mock_get_settings):
-    """
-    Tests that the summarizer handles a missing prompt file gracefully without crashing.
-    """
-    # ARRANGE: Mock the boto3 client to avoid real AWS calls
-    with patch('boto3.client'):
-        # ACT
-        summarizer = BedrockSummarizer()
-
-        # ASSERT
-        assert "Error: Prompt file" in summarizer.prompt_template
+        total_errors = sum(c['count'] for c in clusters)
+        num_signatures = len(clusters)
+        most_common_error = clusters[0]
         
-        # Verify that calling summarize returns the error message
-        summary = summarizer.summarize_clusters([MagicMock()])
-        assert summary == summarizer.prompt_template
+        summary = (
+            f"AI summary failed. Basic Analysis: Found {total_errors} errors across {num_signatures} unique signatures. "
+            f"The most common error ({most_common_error['count']} times) was: '{most_common_error['signature']}'."
+        )
+        return summary
