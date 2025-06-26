@@ -3,11 +3,11 @@ import os
 
 import aws_cdk as cdk
 
-from infra_cdk.project_cdk_stack import ProjectCdkStack
+from infra_cdk.project_cdk_stack import ProjectStack
 
 
 app = cdk.App()
-ProjectCdkStack(app, "ProjectCdkStack",
+ProjectStack(app, "LambdaErrorAnalyer",
     # If you don't specify 'env', this stack will be environment-agnostic.
     # Account/Region-dependent features and context lookups will not work,
     # but a single synthesized template can be deployed anywhere.
