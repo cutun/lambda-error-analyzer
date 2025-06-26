@@ -14,10 +14,11 @@ def handler(event, context):
 
     # Get the target S3 bucket name from an environment variable.
     # This is set in the CDK/SAM template.
+    
     try:
-        raw_logs_bucket = os.environ['RAW_LOGS_BUCKET_NAME']
+        delivery_stream = os.environ['DELIVERY_STREAM']
     except KeyError:
-        print("❌ FATAL: RAW_LOGS_BUCKET_NAME environment variable not set.")
+        print("❌ FATAL: DELIVERY_STREAM environment variable not set.")
         return {
             "statusCode": 500,
             "body": json.dumps({"error": "Server configuration error."})
@@ -26,7 +27,7 @@ def handler(event, context):
     # The actual log data is in the 'body' of the event from API Gateway
     try:
         log_body = event.get('body')
-        if not log_body:
+        if not log_body:        
             print("⚠️ Warning: Request body is empty.")
             return {
                 "statusCode": 400,
@@ -38,19 +39,16 @@ def handler(event, context):
         current_time = datetime.now(timezone.utc)
         key_prefix = current_time.strftime('%Y/%m/%d/%H')
         unique_id = uuid.uuid4()
-        s3_key = f"{key_prefix}/log-{unique_id}.txt"
+        delivery_key = f"{key_prefix}/log-{unique_id}.txt"
 
         # Initialize the S3 client
-        s3 = boto3.client('s3')
+        # s3 = boto3.client('s3')
+        firehose = boto3.client('firehose')
 
-        print(f"Uploading log to s3://{raw_logs_bucket}/{s3_key}")
-
-        # Upload the log data to S3
-        s3.put_object(
-            Bucket=raw_logs_bucket,
-            Key=s3_key,
-            Body=log_body,
-            ContentType='text/plain'
+        # Upload the log data to Firehose
+        firehose.put_record( 
+            DeliveryStreamName=delivery_stream,
+            Record={"Data": (log_body.rstrip("\n") + "\n").encode()}
         )
 
         print("✅ Log successfully ingested and saved to S3.")
@@ -66,5 +64,5 @@ def handler(event, context):
     # Return a success response to the API Gateway
     return {
         "statusCode": 202, # 202 Accepted is a good status code for asynchronous processing
-        "body": json.dumps({"status": "Log accepted for processing", "s3_key": s3_key})
+        "body": json.dumps({"status": "Log accepted for processing", "s3_key": delivery_key})
     }

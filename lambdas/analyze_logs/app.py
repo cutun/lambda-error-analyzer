@@ -4,6 +4,7 @@ import uuid
 import boto3
 import os
 import urllib.parse
+import gzip
 from typing import Dict, Any, List
 from datetime import datetime, timedelta, timezone
 
@@ -15,13 +16,16 @@ from bedrock_summarizer import BedrockSummarizer
 s3_client = boto3.client('s3')
 
 def get_logs_from_s3(bucket: str, key: str) -> List[str]:
-    """Downloads a log file from S3 and splits it into a list of logs."""
+    """Downloads a gzip log file from S3 and splits it into a list of logs."""
     try:
         # URL-decode the key in case it has special characters (e.g., spaces)
         key = urllib.parse.unquote_plus(key)
         response = s3_client.get_object(Bucket=bucket, Key=key)
-        # Read the file content and decode it from bytes to a string
-        log_content = response['Body'].read().decode('utf-8')
+        log_content = response["Body"].read()
+        if key.endswith(".gz"):
+            log_content = gzip.decompress(log_content)
+
+        log_content = log_content.decode("utf-8")
         # Split logs by single or double newline, which is how our sample file is formatted.
         # This might need to be adjusted based on the actual log format.
         log_content = log_content.replace('\n\n', '\n')

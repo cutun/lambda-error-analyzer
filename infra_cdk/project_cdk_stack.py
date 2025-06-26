@@ -3,8 +3,6 @@ from aws_cdk import (
     Duration,
     CfnParameter,
     RemovalPolicy,
-    # --- NEW: Import BundlingOptions to handle Docker builds ---
-    BundlingOptions,
     aws_dynamodb as dynamodb,
     aws_lambda as _lambda,
     aws_lambda_event_sources as lambda_event_sources,
@@ -13,6 +11,7 @@ from aws_cdk import (
     aws_sns as sns,
     aws_apigatewayv2 as apigw,
     aws_apigatewayv2_integrations as apigw_integrations,
+    aws_kinesisfirehose as firehose,
     aws_iam as iam,
     CfnOutput
 )
@@ -45,22 +44,29 @@ class ProjectCdkStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True
         )
+
+        s3_dest = firehose.S3Bucket(
+            raw_logs_bucket,
+            compression=firehose.Compression.GZIP   
+        )
+
+        delivery_stream = firehose.DeliveryStream(self, "RawLogsDeliveryStream",
+                destination=s3_dest
+        )
         
         ingest_log_function = _lambda.Function(self, "IngestLogFunction",
             runtime=_lambda.Runtime.PYTHON_3_12,
             code=_lambda.Code.from_asset("lambdas/ingest_log"),
             handler="app.handler",
-            environment={"RAW_LOGS_BUCKET_NAME": raw_logs_bucket.bucket_name},
-            memory_size=512,
+            environment={"DELIVERY_STREAM": delivery_stream.delivery_stream_name},
             layers=[common_layer]
         )
-        raw_logs_bucket.grant_write(ingest_log_function)
         
+        # raw_logs_bucket.grant_write(ingest_log_function)
+        delivery_stream.grant_put_records(ingest_log_function)
+
         http_api = apigw.HttpApi(self, "LogIngestionApi",
-            default_integration=apigw_integrations.HttpLambdaIntegration(
-                "IngestionIntegration",
-                handler=ingest_log_function
-            )
+            default_integration=apigw_integrations.HttpLambdaIntegration("IngestionIntegration", handler=ingest_log_function)
         )
 
         # === STAGE 2: Analysis ===
