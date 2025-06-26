@@ -30,6 +30,7 @@ class LogClusterer:
         """
         timestamps: Dict[str, List[str]] = defaultdict(list)
         representative_logs: Dict[str, str] = defaultdict(list)
+        cluster_levels: Dict[str, int] = defaultdict(list)
 
         extractor = ExtractSignature(min_severity="WARNING")
         for log in raw_logs:
@@ -39,19 +40,24 @@ class LogClusterer:
             if not result:
                 continue
             ts = result["timestamp"]
+            if isinstance(ts, datetime):
+                ts = ts.isoformat()
             signature = result["signature"]
+            level = result["level_rank"]
             if not signature.strip():
                 continue
             # Only cluster logs that have a valid signature
             if signature:
                 timestamps[signature].append(ts)
                 representative_logs[signature] = log
+                cluster_levels[signature] = level
         print(f"Clusters extracted: {json.dumps(timestamps)}")
         log_cluster_list = []
         for signature, grouped_timestamps in timestamps.items():
             cluster = {
                 "signature": signature,
                 "count": len(grouped_timestamps),
+                "level_rank": cluster_levels[signature],
                 "representative_log": representative_logs[signature],
                 "timestamps": grouped_timestamps
             }

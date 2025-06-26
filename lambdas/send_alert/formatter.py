@@ -53,7 +53,7 @@ def format_timestamp(iso_string: str) -> str:
         # If parsing fails for any reason, return the original string
         return iso_string
     
-def format_html_body(analysis_result: dict) -> str:
+def format_html_body(analysis_result: dict, max_clusters: int) -> str:
     """Takes the full analysis result and builds a final, polished HTML digest email."""
 
     # --- 1. CSS Styles ---
@@ -152,7 +152,7 @@ def format_html_body(analysis_result: dict) -> str:
     
     # Cluster Cards
     clusters_html = ""
-    for cluster in analysis_result.get("clusters", []):
+    for cluster in analysis_result.get("clusters", [])[:max_clusters]:
         signature = cluster.get("signature", "N/A")
         count = cluster.get("count", 0)
         rep_log = cluster.get("representative_log", "N/A")
@@ -205,7 +205,7 @@ def format_html_body(analysis_result: dict) -> str:
     return html
 
 
-def format_slack_message(analysis_result: dict) -> dict:
+def format_slack_message(analysis_result: dict, max_clusters: int) -> dict:
     """
     Takes the full analysis result and builds a final, polished Slack message
     with the count badge aligned to the right.
@@ -242,7 +242,7 @@ def format_slack_message(analysis_result: dict) -> dict:
     blocks.append({"type": "divider"})
 
     # Add a card for each cluster
-    for cluster in analysis_result.get("clusters", []):
+    for cluster in analysis_result.get("clusters", [])[:max_clusters]:
         signature = cluster.get("signature", "N/A")
         count = cluster.get("count", 0)
         rep_log = cluster.get("representative_log", "N/A")

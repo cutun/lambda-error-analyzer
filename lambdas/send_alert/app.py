@@ -15,9 +15,9 @@ def unmarshall_dynamodb_item(ddb_item: dict) -> dict:
     return {k: deserializer.deserialize(v) for k, v in ddb_item.items()}
 
 
-def send_formatted_email(ses, alert_data, sender_email, recipients):
+def send_formatted_email(ses, alert_data, sender_email, recipients, max_clusters):
     subject = "[Alert]-New Log Analysis"
-    html_body = format_html_body(alert_data)
+    html_body = format_html_body(alert_data, max_clusters)
     text_body = format_text_body(alert_data)
 
     ses.send_email(
@@ -42,6 +42,9 @@ def handler(event, context):
     SENDER_EMAIL = os.environ.get('SENDER_EMAIL')
     SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL')
 
+    MAX_SLACK_CLUSTERS = 10
+    MAX_EMAIL_CLUSTERS = 100
+
     message_string = event['Records'][0]['Sns']['Message']
     alert_data = json.loads(message_string)
     
@@ -64,7 +67,7 @@ def handler(event, context):
         if SLACK_WEBHOOK_URL:
             try:
                 print("Formatting and sending Slack message...")
-                slack_payload = format_slack_message(analysis_result)
+                slack_payload = format_slack_message(analysis_result, MAX_SLACK_CLUSTERS)
                 print("slack payload to send:", slack_payload)
                 response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
                 response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
@@ -79,7 +82,7 @@ def handler(event, context):
         if SENDER_EMAIL and RECIPIENT_EMAIL:
             try:
                 print(f"Formatting and sending email to: {RECIPIENT_EMAIL}")
-                send_formatted_email(ses_client, analysis_result, SENDER_EMAIL, RECIPIENT_EMAIL)
+                send_formatted_email(ses_client, analysis_result, SENDER_EMAIL, RECIPIENT_EMAIL, MAX_EMAIL_CLUSTERS)
                 print("✅ Email sent successfully.")
             except Exception as e:
                 print(f"⚠️ Could not send email notification: {e}")

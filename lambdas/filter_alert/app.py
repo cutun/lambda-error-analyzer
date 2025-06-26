@@ -116,6 +116,7 @@ def filter_alert(analysis_result):
     analysis_result["clusters"] = actionable_clusters
     analysis_result["total_logs_processed"] = sum(c["count"] for c in analysis_result.get("clusters", []))
     analysis_result["total_clusters_found"] = len(analysis_result.get("clusters", []))
+    analysis_result["clusters"].sort(reverse=True, key=lambda cluster: cluster["count"] * cluster["level_rank"])
     return analysis_result
 
 
