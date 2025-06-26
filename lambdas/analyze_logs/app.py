@@ -22,9 +22,10 @@ def get_logs_from_s3(bucket: str, key: str) -> List[str]:
         response = s3_client.get_object(Bucket=bucket, Key=key)
         # Read the file content and decode it from bytes to a string
         log_content = response['Body'].read().decode('utf-8')
-        # Split logs by double newline, which is how our sample file is formatted.
+        # Split logs by single or double newline, which is how our sample file is formatted.
         # This might need to be adjusted based on the actual log format.
-        return log_content.strip().split('\n\n')
+        log_content = log_content.replace('\n\n', '\n')
+        return log_content.strip().split('\n')
     except Exception as e:
         print(f"Error getting logs from S3 bucket '{bucket}', key '{key}': {e}")
         # Return an empty list to prevent the Lambda from crashing
@@ -80,7 +81,7 @@ def handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
         "total_clusters_found": len(log_clusters),
         "clusters": log_clusters,
         "ttl_expiry": int((datetime.now(timezone.utc) + timedelta(hours=48)).timestamp()),
-        "processed_at": str(datetime.now(timezone.utc))
+        "processed_at": datetime.now(timezone.utc).isoformat()
     }
     
     # 4. Persist the result to DynamoDB

@@ -3,6 +3,8 @@ from aws_cdk import (
     Duration,
     CfnParameter,
     RemovalPolicy,
+    # --- NEW: Import BundlingOptions to handle Docker builds ---
+    BundlingOptions,
     aws_dynamodb as dynamodb,
     aws_lambda as _lambda,
     aws_lambda_event_sources as lambda_event_sources,
@@ -62,7 +64,7 @@ class ProjectCdkStack(Stack):
         )
 
         # === STAGE 2: Analysis ===
-        log_table = dynamodb.Table(self, "LogTable",
+        analysis_results_table = dynamodb.Table(self, "AnalysisResultsTable",
             partition_key=dynamodb.Attribute(name="analysis_id", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY,
@@ -76,13 +78,13 @@ class ProjectCdkStack(Stack):
             handler="app.handler",
             timeout=Duration.seconds(30),
             environment={
-                "DYNAMODB_TABLE_NAME": log_table.table_name,
-                "BEDROCK_MODEL_ID": "amazon.nova-micro-v1:0"
+                "DYNAMODB_TABLE_NAME": analysis_results_table.table_name,
+                "BEDROCK_MODEL_ID": "amazon.titan-text-express-v1"
             },
             memory_size=512,
             layers=[common_layer]
         )
-        log_table.grant_write_data(analyze_log_function)
+        analysis_results_table.grant_write_data(analyze_log_function)
         raw_logs_bucket.grant_read(analyze_log_function)
         analyze_log_function.add_to_role_policy(iam.PolicyStatement(actions=["bedrock:InvokeModel"], resources=["*"]))
         analyze_log_function.add_event_source(lambda_event_sources.S3EventSource(raw_logs_bucket, events=[s3.EventType.OBJECT_CREATED]))
@@ -90,16 +92,32 @@ class ProjectCdkStack(Stack):
         # === STAGE 3: Filtering ===
         final_alerts_topic = sns.Topic(self, "FinalAlertsTopic")
 
+        log_history_table = dynamodb.Table(self, "LogHistoryTable",
+            partition_key=dynamodb.Attribute(name="signature", type=dynamodb.AttributeType.STRING),
+            sort_key=dynamodb.Attribute(name="timestamp", type=dynamodb.AttributeType.STRING),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
+            time_to_live_attribute="ttl",
+        )
+
         filter_alert_function = _lambda.Function(self, "FilterAlertFunction",
             runtime=_lambda.Runtime.PYTHON_3_12,
             code=_lambda.Code.from_asset("lambdas/filter_alert"),
             handler="app.handler",
-            environment={"FINAL_ALERTS_TOPIC_ARN": final_alerts_topic.topic_arn},
+            timeout=Duration.seconds(20),
+            environment={
+                "FINAL_ALERTS_TOPIC_ARN": final_alerts_topic.topic_arn,
+                "HISTORY_TABLE_NAME": log_history_table.table_name
+            },
             memory_size=512,
             layers=[common_layer]
         )
         final_alerts_topic.grant_publish(filter_alert_function)
-        filter_alert_function.add_event_source(lambda_event_sources.DynamoEventSource(log_table, starting_position=_lambda.StartingPosition.LATEST))
+        log_history_table.grant_read_write_data(filter_alert_function)
+        filter_alert_function.add_event_source(lambda_event_sources.DynamoEventSource(
+            analysis_results_table, 
+            starting_position=_lambda.StartingPosition.LATEST
+        ))
 
         # === STAGE 4: Alerting ===
         send_alert_function = _lambda.Function(self, "SendAlertFunction",
@@ -116,8 +134,13 @@ class ProjectCdkStack(Stack):
             layers=[common_layer]
         )
         send_alert_function.add_to_role_policy(iam.PolicyStatement(actions=["ses:SendEmail", "ses:SendRawEmail"], resources=["*"]))
-        send_alert_function.add_to_role_policy(iam.PolicyStatement(actions=["ssm:GetParameter"], resources=["*"]))
+        send_alert_function.add_to_role_policy(iam.PolicyStatement(actions=["ssm:GetParameter"], resources=[
+            f"arn:aws:ssm:{self.region}:{self.account}:parameter/{slack_param_name.value_as_string}"
+        ]))
         send_alert_function.add_event_source(lambda_event_sources.SnsEventSource(final_alerts_topic))
         
         # === Outputs ===
         CfnOutput(self, "ApiEndpointUrl", value=f"{http_api.url}logs")
+        CfnOutput(self, "RawLogsBucketName", value=raw_logs_bucket.bucket_name)
+        CfnOutput(self, "AnalysisResultsTableName", value=analysis_results_table.table_name)
+        CfnOutput(self, "LogHistoryTableName", value=log_history_table.table_name)

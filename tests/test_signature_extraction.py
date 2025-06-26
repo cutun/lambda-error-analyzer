@@ -1,15 +1,5 @@
 
-import sys, os
-sys.path.insert(0, "C:\\aws-lambda-error-analyzer\\lambda-error-analyzer")
-from lambdas.analyze_logs.clusterer import ExtractSignature
-from lambdas.send_alert.formatter import parse_signature
-
-filename = "test_log_variety_50MB.log"
-# filename = "sample_logs.txt"
-# filename = "test_log_100MB.log"
-
-
-
+import sys
 import os
 import requests
 import json
@@ -17,11 +7,19 @@ import uuid
 from datetime import datetime, timezone
 
 
+sys.path.insert(0, "C:\\aws-lambda-error-analyzer\\lambda-error-analyzer\\lambda_layer\\python\\lib\\python3.12\\site-packages")
+from parser import ExtractSignature, parse_signature
+filename = "test_log_variety_50MB.log"
+# filename = "sample_logs.txt"
+# filename = "test_log_100MB.log"
+
+
+
 if __name__ == "__main__":
     log_file = open(f"tests\\sample_logs\\{filename}")
     content = log_file.read()
 
-    signature_extractor = ExtractSignature(min_severity="DEBUG")
+    signature_extractor = ExtractSignature(min_severity="WARNING")
     sample_logs = content.replace("\n\n", "\n")
     log_list = sample_logs.split("\n")
     log_list = [
@@ -34,14 +32,19 @@ if __name__ == "__main__":
     for log in log_list[:500]:
         if not log.strip():
             continue
-        sig = signature_extractor._extract_signature(log)
-        lvl, msg = parse_signature(sig)
-        combined_msg = f"{lvl}: {msg}"
+        result = signature_extractor.extract(log)
+        if not result:
+            continue
+        lvl = result['level_rank']
+        sig = result['signature']
+        lvl_text, msg = parse_signature(sig)
+        ts = result['timestamp']
         print("Log ---> ", log)
         print("    Signature ---> ", sig)
-        print("    Level -------> ", lvl)
-        print("    Message------"+"-"*(len(lvl)+2)+"> ", msg)
-        print("    Combined ----> ", combined_msg)
+        print("    Level -------> ", lvl_text)
+        print("    Message------"+"-"*(len(lvl_text)+2)+"> ", msg)
+        print("    Timestamp ---> ", ts)
+        print("    Severity ----> ", lvl)
         print("-"*80)
 
 

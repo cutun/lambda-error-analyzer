@@ -58,6 +58,7 @@ def handler(event, context):
         message_string = event['Records'][0]['Sns']['Message']
         analysis_result = json.loads(message_string)
         print(f"Successfully parsed analysis result for ID: {analysis_result.get('analysis_id')}")
+        print(f"Output: {analysis_result}")
         
         # --- Slack Notification Logic ---
         if SLACK_WEBHOOK_URL:

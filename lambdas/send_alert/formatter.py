@@ -8,6 +8,7 @@ import re
 
 table = {
         "CRITICAL": "🔴",   # Red for severe
+        "FATAL":    "🔴",   # Red for severe
         "ERROR":    "🔴",   # Red for severe
         "WARNING":  "🟡",   # Yellow for caution
         "INFO":     "🔵",   # Blue for information
@@ -111,6 +112,7 @@ def format_html_body(analysis_result: dict) -> str:
         pre, code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 14px;}
         pre { margin: 10px 0 0 0; padding: 10px; background-color: #f6f8fa; border-radius: 6px; white-space: pre-wrap; word-wrap: break-word; }
         .highlight-error, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
+        .highlight-fatal, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
         .highlight-critical, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
         .highlight-warning { color: #b08800; font-weight: bold; font-size: 18px}
         .highlight-info {color: #007bff; font-weight: bold; font-size: 18px;}
