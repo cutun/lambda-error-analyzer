@@ -90,7 +90,7 @@ class ProjectCdkStack(Stack):
             timeout=Duration.seconds(30),
             environment={
                 "DYNAMODB_TABLE_NAME": analysis_results_table.table_name,
-                "BEDROCK_MODEL_ID": "amazon.titan-text-express-v1"
+                "BEDROCK_MODEL_ID": "amazon.nova-micro-v1:0"
             },
             memory_size=512,
             layers=[common_layer]
