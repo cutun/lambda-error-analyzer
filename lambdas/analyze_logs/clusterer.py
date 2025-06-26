@@ -58,13 +58,3 @@ class LogClusterer:
         # Sort clusters by importance in descending order for clarity
         return sorted(log_cluster_list, key=lambda c: c["count"], reverse=True)
 
-    # def extract_signature(self, log_message: str) -> str:
-    #     """
-    #     Extracts a stable signature from a log message.
-    #     1. Handles common bracketed log levels like [ERROR], [CRITICAL].
-    #     2. Falls back to user-supplied regex patterns for more complex cases.
-    #     """
-    #     if not log_message.strip():
-    #         return ""
-    #     return ExtractSignature(min_severity="DEBUG")._extract_signature(log_message)
-
