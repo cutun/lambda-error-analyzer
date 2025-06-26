@@ -36,9 +36,11 @@ class LogClusterer:
             if not log.strip():
                 continue
             result = extractor.extract(log)
+            if not result:
+                continue
             ts = result["timestamp"]
             signature = result["signature"]
-            if not signature:
+            if not signature.strip():
                 continue
             # Only cluster logs that have a valid signature
             if signature:

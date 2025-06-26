@@ -1,5 +1,6 @@
 from aws_cdk import (
     Stack,
+    Size,
     Duration,
     CfnParameter,
     RemovalPolicy,
@@ -47,7 +48,11 @@ class ProjectCdkStack(Stack):
 
         s3_dest = firehose.S3Bucket(
             raw_logs_bucket,
-            compression=firehose.Compression.GZIP   
+            compression=firehose.Compression.GZIP,
+            # Decrease the buffering time (default is 300 seconds)
+            buffering_interval=Duration.seconds(60), 
+            # Decrease the buffering size (default is 5 MiB)
+            buffering_size=Size.mebibytes(1) 
         )
 
         delivery_stream = firehose.DeliveryStream(self, "RawLogsDeliveryStream",
