@@ -10,16 +10,16 @@ from datetime import datetime, timezone
 sys.path.insert(0, "C:\\aws-lambda-error-analyzer\\lambda-error-analyzer\\lambda_layer\\python\\lib\\python3.12\\site-packages")
 from parser import ExtractSignature, parse_signature
 # filename = "test_log_variety_50MB.log"
-filename = "sample_logs.txt"
+# filename = "sample_logs.txt"
 # filename = "test_log_100MB.log"
-# filename = "unstructured_kernel_style.log"
+filename = "unstructured_kernel_style.log"
 
 
 if __name__ == "__main__":
     log_file = open(f"tests\\sample_logs\\{filename}")
     content = log_file.read()
 
-    signature_extractor = ExtractSignature(min_severity="TRACE")
+    signature_extractor = ExtractSignature(min_severity="INFO")
     sample_logs = content.replace("\n\n", "\n")
     log_list = sample_logs.split("\n")
     log_list = [
@@ -39,6 +39,8 @@ if __name__ == "__main__":
         sig = result['signature']
         lvl_text, msg = parse_signature(sig)
         ts = result['timestamp']
+        if not sig.strip():
+            continue
         # if lvl_text != "UNCLASSIFIED":
         #     continue
         print("Log ---> ", log)
