@@ -114,6 +114,12 @@ This project is built using the AWS CDK (Cloud Development Kit).
 
 5. A verified email identity in Amazon SES.
 
+6. **Bedrock Model Access Enabled:** You must manually enable access to the foundation models in the AWS Bedrock console.
+   * Navigate to **Amazon Bedrock** in the AWS Console.
+   * In the bottom-left menu, click **Model access**.
+   * Click **Manage model access** and grant access to the **Amazon** models, which includes "Titan Text Express".
+   * **Important:** Ensure you do this in the same AWS region you are deploying the stack to (e.g., `us-east-1`).
+
 ### Deployment Steps
 1. Clone the repository:
     ```
@@ -136,13 +142,16 @@ This project is built using the AWS CDK (Cloud Development Kit).
     ```
 5. Deploy the stack. You must provide the required parameters.
     ```
-    cdk deploy --parameters VerifiedSenderEmail="your-verified@email.com" --parameters RecipientEmail="your-alert@email.com" --parameters SlackWebhookSsmParamName="slack-webhook-url(optional)"
+    cdk deploy \
+     --parameters VerifiedSenderEmail="your-verified@email.com" \
+     --parameters RecipientEmail="your-alert@email.com" \
+     --parameters SlackWebhookSsmParamName="slack-webhook-url(optional)"
     ```
 ## 🚀 Usage
 ### Sending Test Logs
 After a successful deployment, the CDK will output the `ApiIngestionEndpointUrl`
 
-1. Create a sample log file (e.g., sample_logs/test.log).
+1. Locate or create a sample log file (e.g., sample_logs/test.log).
 
 2. Update your local `.env` file with the live API endpoint URL.
 
