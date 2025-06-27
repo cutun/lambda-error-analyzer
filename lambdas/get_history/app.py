@@ -23,10 +23,11 @@ def handler(event: dict, context: object) -> dict:
     print(f"Received event: {json.dumps(event)}")
     
     try:
-        # in here we would get the parameters from API gateway
+        # Get parameters from API gateway
         query_params = event.get('queryStringParameters') or {}
         signature = query_params.get('signature')
         
+        # Require signature to query
         if not signature:
             return {
                 'statusCode': 400,
@@ -43,7 +44,7 @@ def handler(event: dict, context: object) -> dict:
                 'body': json.dumps({'message': 'Invalid query parameter: hours must be an integer.'})
             }
 
-        # Query DynamoDB for the requested historyk
+        # Query DynamoDB for the requested history
         
         # Calculate the start time for the query
         start_time = datetime.now(timezone.utc) - timedelta(hours=hours_lookback)

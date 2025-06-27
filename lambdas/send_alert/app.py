@@ -9,12 +9,6 @@ from datetime import datetime, timezone
 from formatter import format_html_body, format_text_body, format_slack_message
 
 
-def unmarshall_dynamodb_item(ddb_item: dict) -> dict:
-    """Converts a DynamoDB-formatted item into a regular Python dictionary."""
-    deserializer = TypeDeserializer()
-    return {k: deserializer.deserialize(v) for k, v in ddb_item.items()}
-
-
 def send_formatted_email(ses, alert_data, sender_email, recipients, max_clusters):
     subject = "[Alert]-New Log Analysis"
     html_body = format_html_body(alert_data, max_clusters)
@@ -48,12 +42,8 @@ def handler(event, context):
     message_string = event['Records'][0]['Sns']['Message']
     alert_data = json.loads(message_string)
     
-    # Re-initialize client inside handler to be safe in different environments
     ses_client = boto3.client('ses', region_name=AWS_REGION)
     ssm_client = boto3.client('ssm', region_name=AWS_REGION)
-
-    # For reading subscription list in future
-    dynamodb_resource = boto3.resource('dynamodb')
 
     try:
         # 1. Parse the incoming event from SNS

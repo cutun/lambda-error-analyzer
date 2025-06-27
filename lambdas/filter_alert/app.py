@@ -5,7 +5,6 @@ from botocore.exceptions import ClientError
 from boto3.dynamodb.types import TypeDeserializer
 from datetime import datetime, timezone, timedelta
 
-# --- Import your custom AlertFilter class from the common layer ---
 from alert_stats import AlertFilter
 
 # ==========================================================
@@ -71,7 +70,7 @@ def update_history_with_individual_events(signature: str, timestamps: list[str])
                 batch.put_item(
                     Item={
                         'signature': signature,
-                        'timestamp': ts, # Use the individual timestamp as the sort key
+                        'timestamp': ts,
                         'ttl': ttl_timestamp
                     }
                 )
@@ -98,7 +97,7 @@ def filter_alert(analysis_result):
         if not signature or current_count is None:
             continue
 
-        # 1. Fetch the 48-hour history for this specific cluster signature.
+        # 1. Fetch the history for this specific cluster signature.
         # This history will be a list of individual events (count=1).
         historical_data = get_historical_data_for_cluster(signature)
         
@@ -106,7 +105,7 @@ def filter_alert(analysis_result):
         if AlertFilter.should_alert(historical_data):
             actionable_clusters.append(cluster)
         
-        # 3. IMPORTANT: Update the history table with each individual timestamp from this batch.
+        # 3. Update the history table with each individual timestamp from this batch.
         # This provides a granular history for future analyses.
         cluster_timestamps = cluster.get("timestamps", [])
         if cluster_timestamps:

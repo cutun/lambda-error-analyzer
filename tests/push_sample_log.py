@@ -10,7 +10,7 @@ load_dotenv()
 # Get the API Gateway endpoint URL from an environment variable
 API_ENDPOINT = os.environ.get("LOG_API")
 
-def send_log_file_to_api(file_path: str, amount: int):
+def send_log_file_to_api(file_path: str):
     """
     Reads the first 500 lines of a log file and sends it to the API endpoint.
     """
@@ -22,7 +22,6 @@ def send_log_file_to_api(file_path: str, amount: int):
         print(f"--- Reading log file: {file_path} ---")
         with open(file_path, 'r', encoding='utf-8') as f:
             log_contents = f.readlines()
-        size_limit = amount
         max_lines = 500
         log_content = "\n".join(log_contents[:max_lines])
 
@@ -77,4 +76,4 @@ if __name__ == "__main__":
 
     # Loop through all the file paths provided and send each one, choose 100 random log from each
     for file_path in args.log_files:
-        send_log_file_to_api(file_path, 100)
+        send_log_file_to_api(file_path)

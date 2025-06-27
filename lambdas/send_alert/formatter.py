@@ -45,7 +45,6 @@ def format_timestamp(iso_string: str) -> str:
         return "N/A"
     try:
         # Parse the ISO format string into a datetime object
-        # The 'Z' at the end stands for Zulu time, which is UTC.
         dt_object = datetime.fromisoformat(iso_string.replace('Z', '+00:00'))
         # Format it into the desired string format
         return dt_object.strftime('%Y-%m-%d %H:%M:%S %Z')

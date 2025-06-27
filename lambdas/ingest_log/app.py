@@ -12,9 +12,6 @@ def handler(event, context):
     """
     print("--- Ingest Log Lambda Triggered ---")
 
-    # Get the target S3 bucket name from an environment variable.
-    # This is set in the CDK/SAM template.
-    
     try:
         delivery_stream = os.environ['DELIVERY_STREAM']
     except KeyError:
@@ -55,7 +52,6 @@ def handler(event, context):
 
     except Exception as e:
         print(f"❌ An error occurred during ingestion: {e}")
-        # In a real app, you might send this failure to a dead-letter queue
         return {
             "statusCode": 500,
             "body": json.dumps({"error": "Failed to process log."})
