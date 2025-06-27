@@ -1,3 +1,4 @@
+# infra_cdk/project_cdk_stack.py
 from aws_cdk import (
     Stack,
     Size,
@@ -149,9 +150,30 @@ class ProjectStack(Stack):
             f"arn:aws:ssm:{self.region}:{self.account}:parameter/{slack_param_name.value_as_string}"
         ]))
         send_alert_function.add_event_source(lambda_event_sources.SnsEventSource(final_alerts_topic))
+
+        # === FRONTEND: History API ===
+        get_history_function = _lambda.Function(self, "GetHistoryFunction",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            code=_lambda.Code.from_asset("lambdas/get_history"),
+            handler="app.handler",
+            environment={
+                "HISTORY_TABLE_NAME": log_history_table.table_name
+            },
+            layers=[common_layer]
+        )
+        log_history_table.grant_read_data(get_history_function)
+        history_integration = apigw_integrations.HttpLambdaIntegration(
+            "HistoryIntegration",
+            handler=get_history_function
+        )
         
+        http_api.add_routes(
+            path="/history",
+            methods=[apigw.HttpMethod.GET],
+            integration=history_integration
+        )
+
         # === Outputs ===
-        CfnOutput(self, "ApiEndpointUrl", value=f"{http_api.url}logs")
-        CfnOutput(self, "RawLogsBucketName", value=raw_logs_bucket.bucket_name)
-        CfnOutput(self, "AnalysisResultsTableName", value=analysis_results_table.table_name)
-        CfnOutput(self, "LogHistoryTableName", value=log_history_table.table_name)
+        CfnOutput(self, "ApiIngestionEndpointUrl", value=f"{http_api.url}logs", description="The URL to post logs to.")
+        CfnOutput(self, "ApiHistoryEndpointUrl", value=f"{http_api.url}history", description="The URL to get error history from.")
+

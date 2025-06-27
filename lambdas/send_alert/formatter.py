@@ -238,17 +238,8 @@ def format_slack_message(analysis_result: dict, max_clusters: int) -> dict:
                 "text": {"type": "mrkdwn", "text": f"💡 *AI Summary:*\n>_{ai_summary}_"}
             }
         ])
-
+    
     blocks.append({"type": "divider"})
-        
-    # Add Label if clipped
-    if len(analysis_result) > max_clusters:
-        blocks.extend([
-            {
-                "type": "mrkdwn",
-                "text": f"*TOP {max_clusters} ALERTS:*"
-            }
-        ])
 
     # Add a card for each cluster
     for cluster in analysis_result.get("clusters", [])[:max_clusters]:
