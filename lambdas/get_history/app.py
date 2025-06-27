@@ -6,6 +6,8 @@ from boto3.dynamodb.conditions import Key
 from datetime import datetime, timedelta, timezone
 
 HISTORY_TABLE_NAME = os.environ.get("HISTORY_TABLE_NAME", "LogHistoryTable")
+ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN")
+
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(HISTORY_TABLE_NAME)
 
@@ -28,7 +30,7 @@ def handler(event: dict, context: object) -> dict:
         if not signature:
             return {
                 'statusCode': 400,
-                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': ALLOWED_ORIGIN},
                 'body': json.dumps({'message': 'Missing required query parameter: signature'})
             }
             
@@ -37,7 +39,7 @@ def handler(event: dict, context: object) -> dict:
         except ValueError:
             return {
                 'statusCode': 400,
-                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': ALLOWED_ORIGIN},
                 'body': json.dumps({'message': 'Invalid query parameter: hours must be an integer.'})
             }
 
@@ -74,7 +76,8 @@ def handler(event: dict, context: object) -> dict:
             'statusCode': 200,
             'headers': {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*' # Allow frontend access
+                # Use the specific origin
+                'Access-Control-Allow-Origin': ALLOWED_ORIGIN
             },
             'body': json.dumps(result_body)
         }

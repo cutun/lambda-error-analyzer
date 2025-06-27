@@ -10,11 +10,15 @@ from aws_cdk import (
     aws_lambda_event_sources as lambda_event_sources,
     aws_s3 as s3,
     aws_s3_notifications as s3_nots,
+    aws_s3_deployment as s3_deployment,
     aws_sns as sns,
     aws_apigatewayv2 as apigw,
     aws_apigatewayv2_integrations as apigw_integrations,
     aws_kinesisfirehose as firehose,
     aws_iam as iam,
+    aws_cloudfront as cloudfront,
+    aws_cloudfront_origins as origins,
+    aws_apigatewayv2 as apigw,
     CfnOutput
 )
 from constructs import Construct
@@ -33,6 +37,39 @@ class ProjectStack(Stack):
             
         slack_param_name = CfnParameter(self, "SlackWebhookSsmParamName", type="String",
             description="The name of the SSM Parameter that stores the Slack Webhook URL.")
+        
+        # === Frontend Deployment to S3 ===
+
+        # 1. Create a private S3 bucket
+        frontend_bucket = s3.Bucket(self, "FrontendBucket",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL, # Keep it private
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+        )
+
+        # 2. Create a CloudFront Origin Access Identity (OAI)
+        origin_access_identity = cloudfront.OriginAccessIdentity(self, "MyOAI")
+        frontend_bucket.grant_read(origin_access_identity) # Allow OAI to read from the bucket
+
+        # 3. Create a CloudFront distribution
+        distribution = cloudfront.Distribution(self, "CloudFrontDistribution",
+            default_behavior=cloudfront.BehaviorOptions(
+                origin=origins.S3Origin(
+                    frontend_bucket,
+                    origin_access_identity=origin_access_identity # Pass the OAI to the origin
+                ),
+                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS
+            ),
+            default_root_object="index.html",
+        )
+
+        # 4. Define the deployment from your local `frontend` folder
+        s3_deployment.BucketDeployment(self, "DeployStaticWebsite",
+            sources=[s3_deployment.Source.asset("./frontend")],
+            destination_bucket=frontend_bucket,
+            distribution=distribution,
+            distribution_paths=["/*"],
+        )
 
         # === Define a Shared Lambda Layer ===
         common_layer = _lambda.LayerVersion(self, "CommonLayer",
@@ -72,8 +109,18 @@ class ProjectStack(Stack):
         delivery_stream.grant_put_records(ingest_log_function)
 
         http_api = apigw.HttpApi(self, "LogIngestionApi",
-            default_integration=apigw_integrations.HttpLambdaIntegration("IngestionIntegration", handler=ingest_log_function)
+            default_integration=apigw_integrations.HttpLambdaIntegration("IngestionIntegration", handler=ingest_log_function),
+            cors_preflight={
+                "allow_headers": ["Content-Type"],
+                "allow_methods": [
+                    apigw.CorsHttpMethod.GET,
+                    apigw.CorsHttpMethod.POST,
+                    apigw.CorsHttpMethod.OPTIONS
+                ],
+                "allow_origins": [f"https://{distribution.distribution_domain_name}"],
+            }
         )
+
 
         # === STAGE 2: Analysis ===
         analysis_results_table = dynamodb.Table(self, "AnalysisResultsTable",
@@ -176,4 +223,9 @@ class ProjectStack(Stack):
         # === Outputs ===
         CfnOutput(self, "ApiIngestionEndpointUrl", value=f"{http_api.url}logs", description="The URL to post logs to.")
         CfnOutput(self, "ApiHistoryEndpointUrl", value=f"{http_api.url}history", description="The URL to get error history from.")
+        CfnOutput(self, "FrontendURL",
+            value=f"https://{distribution.distribution_domain_name}",
+            description="The live URL for the frontend application."
+        )
+        
 
