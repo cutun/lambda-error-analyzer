@@ -117,7 +117,7 @@ This project is built using the AWS CDK (Cloud Development Kit).
 6. **Bedrock Model Access Enabled:** You must manually enable access to the foundation models in the AWS Bedrock console.
    * Navigate to **Amazon Bedrock** in the AWS Console.
    * In the bottom-left menu, click **Model access**.
-   * Click **Manage model access** and grant access to the **Amazon** models, which includes "Titan Text Express".
+   * Click **Manage model access** and grant access to the **Amazon** models, which includes "Nova Micro".
    * **Important:** Ensure you do this in the same AWS region you are deploying the stack to (e.g., `us-east-1`).
 
 ### Deployment Steps
