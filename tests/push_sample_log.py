@@ -12,7 +12,7 @@ API_ENDPOINT = os.environ.get("LOG_API")
 
 def send_log_file_to_api(file_path: str, amount: int):
     """
-    Reads the content of a log file and sends it to the API endpoint.
+    Reads the first 500 lines of a log file and sends it to the API endpoint.
     """
     if not API_ENDPOINT:
         print("❌ ERROR: LOG_API environment variable not set. Please create a .env file.")
@@ -23,7 +23,8 @@ def send_log_file_to_api(file_path: str, amount: int):
         with open(file_path, 'r', encoding='utf-8') as f:
             log_contents = f.readlines()
         size_limit = amount
-        log_content = "\n".join(random.choices(log_contents, k=min(size_limit, len(log_contents))))
+        max_lines = 500
+        log_content = "\n".join(log_contents[:max_lines])
 
         # The analyze_log function expects logs to be separated by double newlines.
         # We ensure the content ends this way for compatibility.
