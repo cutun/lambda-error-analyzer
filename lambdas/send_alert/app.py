@@ -88,7 +88,7 @@ def send_email_notification(ses, sender: str, recipients: list[str], analysis_re
         subject = "[Alert]-New Log Analysis"
         if num_batches > 1:
             subject += f" ({batch_num}/{num_batches})"
-        html_body = format_html_body(analysis_result)
+        html_body = format_html_body(analysis_result, batch_num, num_batches)
         text_body = format_text_body(analysis_result)
 
         try:
@@ -118,7 +118,7 @@ def handler(event, context):
     analysis_result = parse_incoming_event(event)
 
     # The functions will use the globally defined clients and variables
-    send_slack_notification(SLACK_WEBHOOK_URL, analysis_result)
-    send_email_notification(ses_client, SENDER_EMAIL, RECIPIENT_EMAIL, analysis_result)
+    send_slack_notification(SLACK_WEBHOOK_URL, copy.deepcopy(analysis_result))
+    send_email_notification(ses_client, SENDER_EMAIL, RECIPIENT_EMAIL, copy.deepcopy(analysis_result))
 
     return {"statusCode": 200, "body": "Alert processed."}
