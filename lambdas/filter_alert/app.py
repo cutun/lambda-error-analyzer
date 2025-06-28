@@ -10,12 +10,12 @@ from db_history import get_batch_historical_timestamps, batch_update_history, un
 
 # Initialize AWS clients used by this specific lambda.
 try:
-    SNS_CLIENT = boto3.client('sns')
-    FINAL_ALERTS_TOPIC_ARN = os.environ['FINAL_ALERTS_TOPIC_ARN']
+    SQS_CLIENT = boto3.client('sqs')
+    AGGREGATOR_QUEUE_URL = os.environ['AGGREGATOR_QUEUE_URL']
 except KeyError as e:
     print(f"FATAL: Missing required environment variable: {e}")
-    SNS_CLIENT = None
-    FINAL_ALERTS_TOPIC_ARN = None
+    SQS_CLIENT = None
+    AGGREGATOR_QUEUE_URL = None
     raise e
 
 # Main logic and handler
@@ -100,12 +100,10 @@ def process_record(record: dict):
             analysis_result["total_clusters_found"] = len(actionable_clusters)
             analysis_result["total_logs_processed"] = sum(c.get("count", 0) for c in actionable_clusters)
             
-            print(f" -> ✅ Filter PASSED with {len(actionable_clusters)} clusters. Publishing to SNS.")
-
-            SNS_CLIENT.publish(
-                TopicArn=FINAL_ALERTS_TOPIC_ARN,
-                Message=json.dumps(analysis_result, default=str),
-                Subject="Action Required: Anomalous Error Patterns Detected"
+            print(f" -> ✅ Filter PASSED with {len(actionable_clusters)} clusters. Sending to aggregator queue.")
+            SQS_CLIENT.send_message(
+                QueueUrl=AGGREGATOR_QUEUE_URL,
+                MessageBody=json.dumps(analysis_result, default=str)
             )
         else:
             print(" -> ℹ️ All clusters filtered. No actionable clusters found. Suppressing notification.")
@@ -119,7 +117,7 @@ def handler(event, context):
     and publishes to SNS if any actionable alerts remain.
     """
     print("--- FilterAlert Lambda Triggered ---")
-    if not all([SNS_CLIENT, FINAL_ALERTS_TOPIC_ARN]):
+    if not all([SQS_CLIENT, AGGREGATOR_QUEUE_URL]):
         print("FATAL: Lambda is not configured correctly. Aborting.")
         return {"statusCode": 500, "body": "Configuration error."}
     

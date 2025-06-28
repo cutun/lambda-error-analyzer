@@ -106,15 +106,13 @@ This project is built using the AWS CDK (Cloud Development Kit).
 ### Prerequisites
 1. An AWS Account with credentials configured locally (`aws configure`).
 
-2. Node.js and npm installed.
+2. Python, Node.js, and npm installed.
 
 3. AWS CDK Toolkit installed (`npm install -g aws-cdk`).
 
-4. Docker Desktop installed and running.
+4. A verified email identity in Amazon SES.
 
-5. A verified email identity in Amazon SES.
-
-6. **Bedrock Model Access Enabled:** You must manually enable access to the foundation models in the AWS Bedrock console.
+5. **Bedrock Model Access Enabled:** You must manually enable access to the foundation models in the AWS Bedrock console.
    * Navigate to **Amazon Bedrock** in the AWS Console.
    * In the bottom-left menu, click **Model access**.
    * Click **Manage model access** and grant access to the **Amazon** models, which includes "Nova Micro".

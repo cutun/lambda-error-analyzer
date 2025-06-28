@@ -12,6 +12,7 @@ from aws_cdk import (
     aws_s3_notifications as s3_nots,
     aws_s3_deployment as s3_deployment,
     aws_sns as sns,
+    aws_sqs as sqs,
     aws_apigatewayv2 as apigw,
     aws_apigatewayv2_integrations as apigw_integrations,
     aws_kinesisfirehose as firehose,
@@ -105,7 +106,6 @@ class ProjectStack(Stack):
             layers=[common_layer]
         )
         
-        # raw_logs_bucket.grant_write(ingest_log_function)
         delivery_stream.grant_put_records(ingest_log_function)
 
         http_api = apigw.HttpApi(self, "LogIngestionApi",
@@ -148,8 +148,7 @@ class ProjectStack(Stack):
         analyze_log_function.add_to_role_policy(iam.PolicyStatement(actions=["bedrock:InvokeModel"], resources=["*"]))
         analyze_log_function.add_event_source(lambda_event_sources.S3EventSource(raw_logs_bucket, events=[s3.EventType.OBJECT_CREATED]))
 
-        # === STAGE 3: Filtering ===
-        final_alerts_topic = sns.Topic(self, "FinalAlertsTopic")
+        # === STAGE 3: Filtering & Aggregate Results ===
 
         log_history_table = dynamodb.Table(self, "LogHistoryTable",
             partition_key=dynamodb.Attribute(name="signature", type=dynamodb.AttributeType.STRING),
@@ -159,23 +158,56 @@ class ProjectStack(Stack):
             time_to_live_attribute="ttl",
         )
 
+        aggregator_queue = sqs.Queue(self, "AggregatorQueue",
+            visibility_timeout=Duration.minutes(15), # Should be > aggregator timeout
+            retention_period=Duration.hours(4),
+        )
+
         filter_alert_function = _lambda.Function(self, "FilterAlertFunction",
             runtime=_lambda.Runtime.PYTHON_3_12,
             code=_lambda.Code.from_asset("lambdas/filter_alert"),
             handler="app.handler",
             timeout=Duration.minutes(10),
             environment={
-                "FINAL_ALERTS_TOPIC_ARN": final_alerts_topic.topic_arn,
+                "AGGREGATOR_QUEUE_URL": aggregator_queue.queue_url,
                 "HISTORY_TABLE_NAME": log_history_table.table_name
             },
-            memory_size=2048,
+            memory_size=2048, # Needs more memory for statistical calculations
             layers=[common_layer]
         )
-        final_alerts_topic.grant_publish(filter_alert_function)
+
+        aggregator_queue.grant_send_messages(filter_alert_function)
         log_history_table.grant_read_write_data(filter_alert_function)
         filter_alert_function.add_event_source(lambda_event_sources.DynamoEventSource(
             analysis_results_table, 
-            starting_position=_lambda.StartingPosition.LATEST
+            starting_position=_lambda.StartingPosition.LATEST,
+            batch_size=10,
+            max_batching_window=Duration.seconds(60)
+        ))
+
+        final_alerts_topic = sns.Topic(self, "FinalAlertsTopic")
+
+        aggregator_function = _lambda.Function(self, "AggregatorFunction",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            code=_lambda.Code.from_asset("lambdas/aggregator"),
+            handler="app.handler",
+            timeout=Duration.minutes(5), # Needs time to call Bedrock
+            environment={
+                "FINAL_ALERTS_TOPIC_ARN": final_alerts_topic.topic_arn,
+                "BEDROCK_MODEL_ID": "amazon.nova-micro-v1:0"
+            },
+            memory_size=1024, # Needs more memory for aggregation and AI call
+            layers=[common_layer]
+        )
+
+        final_alerts_topic.grant_publish(aggregator_function)
+        aggregator_function.add_to_role_policy(iam.PolicyStatement(actions=["bedrock:InvokeModel"], resources=["*"]))
+        
+        aggregator_function.add_event_source(lambda_event_sources.SqsEventSource(
+            aggregator_queue,
+            # Collect messages for up to five minutes before triggering.
+            max_batching_window=Duration.minutes(5),
+            batch_size=1000
         ))
 
         # === STAGE 4: Alerting ===
@@ -228,4 +260,3 @@ class ProjectStack(Stack):
             description="The live URL for the frontend application."
         )
         
-

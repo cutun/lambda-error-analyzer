@@ -79,9 +79,9 @@ def send_log_file_in_batches(file_path: str, batch_size: int = 10000):
                 # For now, we will print the error and continue processing other files.
                 break # Stop processing this file if a batch fails
             
-            # Add a small half-second delay between batches to avoid rate-limiting
-            # if batch_num < num_batches:
-            #     time.sleep(max(0.5 - (time.time() - start_time), 0))
+            #  Add a small half-second delay between batches to avoid rate-limiting
+            if batch_num < num_batches:
+                time.sleep(max(0.5 - (time.time() - start_time), 0))
 
     except FileNotFoundError:
         print(f"❌ ERROR: File not found at path: {file_path}")
