@@ -181,7 +181,7 @@ class ProjectStack(Stack):
         filter_alert_function.add_event_source(lambda_event_sources.DynamoEventSource(
             analysis_results_table, 
             starting_position=_lambda.StartingPosition.LATEST,
-            batch_size=10,
+            batch_size=1,
             max_batching_window=Duration.seconds(60)
         ))
 
