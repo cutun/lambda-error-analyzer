@@ -88,9 +88,9 @@ class ProjectStack(Stack):
             raw_logs_bucket,
             compression=firehose.Compression.GZIP,
             # Decrease the buffering time (default is 300 seconds)
-            buffering_interval=Duration.seconds(60), 
-            # Decrease the buffering size (default is 5 MiB)
-            buffering_size=Size.mebibytes(1) 
+            buffering_interval=Duration.seconds(60),
+            # Increase the buffering size to accommodate large files
+            buffering_size=Size.mebibytes(128) 
         )
 
         delivery_stream = firehose.DeliveryStream(self, "RawLogsDeliveryStream",
@@ -135,7 +135,7 @@ class ProjectStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_12,
             code=_lambda.Code.from_asset("lambdas/analyze_logs"),
             handler="app.handler",
-            timeout=Duration.seconds(30),
+            timeout=Duration.minutes(5),
             environment={
                 "DYNAMODB_TABLE_NAME": analysis_results_table.table_name,
                 "BEDROCK_MODEL_ID": "amazon.nova-micro-v1:0"
@@ -163,12 +163,12 @@ class ProjectStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_12,
             code=_lambda.Code.from_asset("lambdas/filter_alert"),
             handler="app.handler",
-            timeout=Duration.seconds(20),
+            timeout=Duration.minutes(10),
             environment={
                 "FINAL_ALERTS_TOPIC_ARN": final_alerts_topic.topic_arn,
                 "HISTORY_TABLE_NAME": log_history_table.table_name
             },
-            memory_size=512,
+            memory_size=2048,
             layers=[common_layer]
         )
         final_alerts_topic.grant_publish(filter_alert_function)

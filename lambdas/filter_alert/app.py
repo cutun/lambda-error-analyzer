@@ -1,170 +1,130 @@
+# lambda/filter_alert/app.py
 import os
 import json
 import boto3
-from botocore.exceptions import ClientError
-from boto3.dynamodb.types import TypeDeserializer
-from datetime import datetime, timezone, timedelta
 
+# Import lambda-specific modules
 from alert_stats import AlertFilter
+from db_history import get_batch_historical_timestamps, batch_update_history, unmarshall_dynamodb_item
 
-# ==========================================================
-# ================== DynamoDB Functions ====================
-# ==========================================================
 
-# Initialize DynamoDB client and table resource outside the handler for reuse
-# This is safe because Lambda can reuse this execution environment.
+# Initialize AWS clients used by this specific lambda.
 try:
-    dynamodb = boto3.resource('dynamodb')
-    history_table = dynamodb.Table(os.environ['HISTORY_TABLE_NAME'])
-except KeyError:
-    print("FATAL: HISTORY_TABLE_NAME environment variable not set.")
-    # In a real scenario, you might have better error handling, but for Lambda this will cause an init failure.
-    history_table = None
+    SNS_CLIENT = boto3.client('sns')
+    FINAL_ALERTS_TOPIC_ARN = os.environ['FINAL_ALERTS_TOPIC_ARN']
+except KeyError as e:
+    print(f"FATAL: Missing required environment variable: {e}")
+    SNS_CLIENT = None
+    FINAL_ALERTS_TOPIC_ARN = None
+    raise e
 
-def unmarshall_dynamodb_item(ddb_item: dict) -> dict:
-    """Converts a DynamoDB-formatted item into a regular Python dictionary."""
-    class CustomDeserializer(TypeDeserializer):
-        def _deserialize_n(self, value):
-            return int(value)
-    deserializer = CustomDeserializer()
-    return {k: deserializer.deserialize(v) for k, v in ddb_item.items()}
-
-def get_historical_data_for_cluster(signature: str) -> list:
+# Main logic and handler
+def filter_actionable_clusters(analysis_result: dict) -> list[dict]:
     """
-    Queries DynamoDB to get the 48-hour history for a specific error signature.
+    Efficiently filters clusters by batching all database read and write operations.
     """
-    if not history_table:
-        print("  -> ❌ DynamoDB history table not initialized. Cannot fetch history.")
-        return []
-        
-    print(f"  -> Fetching 48hr history for signature: '{signature[:50]}...'")
-    try:
-        response = history_table.query(
-            KeyConditionExpression='signature = :sig',
-            ExpressionAttributeValues={':sig': signature},
-            ScanIndexForward=False # Get newest items first, though we sort later
-        )
-        items = response.get('Items', [])
-        print(f"  -> Found {len(items)} historical records.")
-        return [item['timestamp'] for item in items]
-    except ClientError as e:
-        print(f"  -> ❌ DynamoDB query failed: {e.response['Error']['Message']}")
+    clusters = analysis_result.get("clusters", [])
+    if not clusters:
         return []
 
-def update_history_with_individual_events(signature: str, timestamps: list[str]):
-    """
-    Writes each individual log event to the history table.
-    """
-    if not history_table:
-        print("  -> ❌ DynamoDB history table not initialized. Cannot write history.")
-        return
-        
-    print(f"  -> Writing {len(timestamps)} individual events to history for signature: '{signature[:50]}...'")
-    try:
-        # Use DynamoDB's batch_writer for efficient bulk writes
-        with history_table.batch_writer() as batch:
-            for ts in timestamps:
-                # DynamoDB TTL requires the timestamp to be a Unix epoch in seconds.
-                ttl_timestamp = int((datetime.now(timezone.utc) + timedelta(hours=48)).timestamp())
+    # Step 1: Batch Read
+    # Collect all unique signatures and fetch their histories in one go.
+    unique_signatures = list(set(c['signature'] for c in clusters if c.get('signature')))
+    all_historical_data = get_batch_historical_timestamps(unique_signatures)
 
-                batch.put_item(
-                    Item={
-                        'signature': signature,
-                        'timestamp': ts,
-                        'ttl': ttl_timestamp
-                    }
-                )
-        print(f"  -> ✅ Successfully updated history with {len(timestamps)} events.")
-    except ClientError as e:
-        print(f"  -> ❌ DynamoDB batch_writer failed: {e.response['Error']['Message']}")
-
-
-# ==========================================================
-# ================ Main Lambda Handler =====================
-# ==========================================================
-
-def filter_alert(analysis_result):
-    """
-    The intelligent filter function. It iterates through clusters, fetches their history,
-    uses the AlertFilter class, and updates the history table with individual events.
-    """
+    # Step 2: In-Memory Filtering
     actionable_clusters = []
-    
-    for cluster in analysis_result.get("clusters", []):
+    history_items_to_write = []
+    alert_filter = AlertFilter()
+
+    for cluster in clusters:
+        stripped_cluster = dict()
         signature = cluster.get("signature")
-        current_count = cluster.get("count")
-        
-        if not signature or current_count is None:
+        if not signature:
             continue
-
-        # 1. Fetch the history for this specific cluster signature.
-        # This history will be a list of individual events (count=1).
-        historical_data = get_historical_data_for_cluster(signature)
         
-        # 2. Call the intelligent filter to make a decision on the new batch.
-        if AlertFilter.should_alert(historical_data):
-            actionable_clusters.append(cluster)
+        # Get pre-fetched history for this specific signature
+        historical_timestamps = all_historical_data.get(signature, [])
+        current_event_timestamps = cluster.get("timestamps", [])
+
+        # Add the new timestamps to the list that will be batch written to the DB
+        for ts in current_event_timestamps:
+            history_items_to_write.append({'signature': signature, 'timestamp': ts})
+
+        # Decide whether to alert for this cluster
+        decision = alert_filter.should_alert(
+            historical_timestamps=historical_timestamps,
+            current_event_timestamps=current_event_timestamps
+        )
+
+        print(f" -> Filter Decision for '{signature[:50]}...': {'Alert' if decision else 'Suppress'}. Reason: {decision.reason}")
+
+        if decision:
+            # Use a stripped down cluster to minimize used bandwith over SNS
+            stripped_cluster["signature"] = cluster.get("signature", "")
+            stripped_cluster["count"] = cluster.get("count", 0)
+            stripped_cluster["representative_log"] = cluster.get("representative_log", "N/A")
+            actionable_clusters.append(stripped_cluster)
+    
+    # Step 3: Batch Write
+    # After processing all clusters, write all the new history items in one batch.
+    if history_items_to_write:
+        batch_update_history(history_items_to_write)
+
+    # Sort the final list of actionable clusters by importance
+    actionable_clusters.sort(reverse=True, key=lambda c: c.get("level_rank", 1) * c.get("count", 1))
+
+    return actionable_clusters
+
+def process_record(record: dict):
+    """
+    Processes a single record from the DynamoDB stream.
+    """
+    try:
+        if record.get('eventName') != 'INSERT':
+            print(" -> Skipping record (not an INSERT event).")
+            return
+
+        new_image = record.get('dynamodb', {}).get('NewImage')
+        if not new_image:
+            print(" -> Skipping record (no 'NewImage' data).")
+            return
         
-        # 3. Update the history table with each individual timestamp from this batch.
-        # This provides a granular history for future analyses.
-        cluster_timestamps = cluster.get("timestamps", [])
-        if cluster_timestamps:
-            update_history_with_individual_events(signature, cluster_timestamps)
+        analysis_result = unmarshall_dynamodb_item(new_image)
+        print(f" -> Successfully parsed analysis for ID: {analysis_result.get('analysis_id')}")
 
-    # Rebuild the result object with only the actionable clusters
-    analysis_result["clusters"] = actionable_clusters
-    analysis_result["total_logs_processed"] = sum(c["count"] for c in analysis_result.get("clusters", []))
-    analysis_result["total_clusters_found"] = len(analysis_result.get("clusters", []))
-    analysis_result["clusters"].sort(reverse=True, key=lambda cluster: cluster["count"] * cluster["level_rank"])
-    return analysis_result
+        actionable_clusters = filter_actionable_clusters(analysis_result)
 
+        if actionable_clusters:
+            analysis_result["clusters"] = actionable_clusters
+            analysis_result["total_clusters_found"] = len(actionable_clusters)
+            analysis_result["total_logs_processed"] = sum(c.get("count", 0) for c in actionable_clusters)
+            
+            print(f" -> ✅ Filter PASSED with {len(actionable_clusters)} clusters. Publishing to SNS.")
+
+            SNS_CLIENT.publish(
+                TopicArn=FINAL_ALERTS_TOPIC_ARN,
+                Message=json.dumps(analysis_result, default=str),
+                Subject="Action Required: Anomalous Error Patterns Detected"
+            )
+        else:
+            print(" -> ℹ️ All clusters filtered. No actionable clusters found. Suppressing notification.")
+    
+    except Exception as e:
+        print(f" -> ❌ An unexpected error occurred while processing record: {e}")
 
 def handler(event, context):
     """
-    This handler is triggered by a DynamoDB Stream, intelligently filters the result
-    using the AlertFilter class, and publishes to SNS if actionable alerts remain.
+    Triggered by a DynamoDB Stream. It intelligently filters the analysis result
+    and publishes to SNS if any actionable alerts remain.
     """
     print("--- FilterAlert Lambda Triggered ---")
-    sns = boto3.client('sns')
-    
-    try:
-        final_alerts_topic_arn = os.environ['FINAL_ALERTS_TOPIC_ARN']
-    except KeyError:
-        print("FATAL: FINAL_ALERTS_TOPIC_ARN environment variable not set.")
+    if not all([SNS_CLIENT, FINAL_ALERTS_TOPIC_ARN]):
+        print("FATAL: Lambda is not configured correctly. Aborting.")
         return {"statusCode": 500, "body": "Configuration error."}
-
+    
     for i, record in enumerate(event.get('Records', [])):
         print(f"\n--- Processing Record #{i+1} ---")
-        try:
-            if record.get('eventName') != 'INSERT':
-                print(f"  -> Skipping record (not an INSERT event).")
-                continue
-
-            new_image = record.get('dynamodb', {}).get('NewImage')
-            if not new_image:
-                print("  -> Skipping record (no 'NewImage' data).")
-                continue
-
-            analysis_result = unmarshall_dynamodb_item(new_image)
-            print("  -> Successfully parsed analysis result from stream.")
-
-            filtered_result = filter_alert(analysis_result)
-
-            if filtered_result.get("clusters"):
-                print(f"  -> Filter PASSED. Publishing to SNS topic: {final_alerts_topic_arn}")
-                sns.publish(
-                    TopicArn=final_alerts_topic_arn,
-                    Message=json.dumps(filtered_result, default=str),
-                    Subject="Action Required: Anomalous Error Patterns Detected"
-                )
-                print("  -> ✅ Filtered alert successfully published to SNS.")
-                print(f"  -> Output: {filtered_result}")
-            else:
-                print("  -> ℹ️ Filter FAILED. No actionable clusters found. No alert sent.")
-        
-        except Exception as e:
-            print(f"  -> ❌ Error processing record: {e}")
-            # Use import traceback; traceback.print_exc() for more detail during debugging
-            continue
+        process_record(record)
 
     return {"statusCode": 200, "body": "Filter process complete."}

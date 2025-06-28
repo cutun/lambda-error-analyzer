@@ -1,39 +1,43 @@
 # lambda/send_alert/formatter.py
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from html import escape
-from collections import defaultdict
-import re
+
+# Configuration
+# Defines the appearance and keywords for different log levels.
+# The keys are the canonical log levels.
+LOG_LEVEL_CONFIG = {
+    "CRITICAL": {"icon": "🔴", "css_class": "highlight-critical"},
+    "FATAL":    {"icon": "🔴", "css_class": "highlight-fatal"},
+    "ERROR":    {"icon": "🔴", "css_class": "highlight-error"},
+    "WARNING":  {"icon": "🟡", "css_class": "highlight-warning"},
+    "INFO":     {"icon": "🔵", "css_class": "highlight-info"},
+    "DEBUG":    {"icon": "⚙️", "css_class": "highlight-debug"},
+    "SERVICE":  {"icon": "🔧", "css_class": "highlight-service"},
+}
+DEFAULT_CONFIG = {"icon": "⚪️", "css_class": "highlight-general"}
 
 
-table = {
-        "CRITICAL": "🔴",   # Red for severe
-        "FATAL":    "🔴",   # Red for severe
-        "ERROR":    "🔴",   # Red for severe
-        "WARNING":  "🟡",   # Yellow for caution
-        "INFO":     "🔵",   # Blue for information
-        "DEBUG":    "⚙️",   # Gear for technical/debug
-        "SERVICE":  "🔧",   # Wrench for service messages
-    }
-
-def get_icon(level):
-    level = level.upper()
-    for keyword, icon in table.items():
-        if keyword in level:
-            return icon
-    return "⚪️"
-
-def parse_signature(signature):
+# Private Helper Functions
+def _parse_log_signature(signature: str) -> tuple[str, str, dict]:
+    """
+    Parses a log signature to extract its level, message, and configuration.
+    
+    Returns:
+        A tuple containing (canonical_level, message, config_dict).
+    """
     split_signature = signature.split(":", 1)
     category = split_signature[0].strip().upper()
-    message = f"{split_signature[1].strip()}" if len(split_signature)==2 else ""
-    for keyword in table.keys():
-        if keyword in category:
-            level = keyword
-            break
-    else:
-        level = category
-    return level, message
+    message = f"{split_signature[1].strip()}" if len(split_signature) == 2 else ""
+    
+    # Find the matching canonical level and its config
+    for level, config in LOG_LEVEL_CONFIG.items():
+        if level in category:
+            return level, message, config
+            
+    # If no specific level is found, return the original category and default config
+    return category, message, DEFAULT_CONFIG
+
 
 def format_timestamp(iso_string: str) -> str:
     """
@@ -44,75 +48,36 @@ def format_timestamp(iso_string: str) -> str:
     if not iso_string:
         return "N/A"
     try:
-        # Parse the ISO format string into a datetime object
         dt_object = datetime.fromisoformat(iso_string.replace('Z', '+00:00'))
-        # Format it into the desired string format
         return dt_object.strftime('%Y-%m-%d %H:%M:%S %Z')
     except (ValueError, TypeError):
-        # If parsing fails for any reason, return the original string
         return iso_string
-    
-def format_html_body(analysis_result: dict, max_clusters: int) -> str:
-    """Takes the full analysis result and builds a final, polished HTML digest email."""
 
-    # --- 1. CSS Styles ---
-    # Added styles for count badges and a more distinct AI summary
-    styles = """
+
+# HTML Formatting
+def _build_html_styles() -> str:
+    """Returns the CSS styles for the HTML email."""
+    return """
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #24292e; background-color: #f6f8fa; margin: 0; padding: 20px;}
         .container { border: 1px solid #e1e4e8; padding: 0; max-width: 700px; margin: 0 auto; border-radius: 8px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(27,31,35,0.08); }
         .header { background-color: #24292e; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0; }
         .header h1 { margin: 0; font-size: 28px; letter-spacing: -1px; }
         .content { padding: 24px; }
-
         h3 { border-bottom: 1px solid #e1e4e8; padding-bottom: 10px; margin-top: 24px; font-size: 20px; font-weight: 600; }
-        .ai-summary {
-            background-color: #f1f8ff;
-            border: 1px solid #c8e1ff;
-            border-radius: 6px;
-            margin-bottom: 24px;
-        }
-        .ai-summary-header {
-            display: flex;
-            align-items: center;
-            padding: 12px 16px;
-            border-bottom: 1px solid #c8e1ff;
-            font-weight: 600;
-            color: #032f62;
-        }
-        .ai-summary-header .icon {
-            font-size: 20px;
-            margin-right: 8px;
-        }
-        .ai-summary-body {
-            padding: 16px;
-            font-size: 15px;
-            color: #032f62;
-            font-style: italic;
-        }
-
+        .ai-summary { background-color: #f1f8ff; border: 1px solid #c8e1ff; border-radius: 6px; margin-bottom: 24px; }
+        .ai-summary-header { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid #c8e1ff; font-weight: 600; color: #032f62; }
+        .ai-summary-body { padding: 16px; font-size: 15px; color: #032f62; font-style: italic; }
         .header-table { width: 100%; border-collapse: collapse; }
         .header-table td { vertical-align: middle; }
         .header-table .signature-cell { text-align: left; }
-        .header-table .badge-cell { text-align: right; width: 1%; } /* The width:1% is a trick to make it only as wide as its content */
-
+        .header-table .badge-cell { text-align: right; width: 1%; }
         .cluster-card { border: 1px solid #e1e4e8; border-radius: 6px; margin-bottom: 16px; overflow: hidden; }
         .cluster-header { display: flex; justify-content: space-between; align-items: center; background-color: #f6f8fa; padding: 10px 15px; font-weight: 600; border-bottom: 1px solid #e1e4e8; }
         .cluster-body { padding: 15px; }
-        .count-badge {
-            background-color: #586069; 
-            color: white; 
-            padding: 4px 10px; 
-            font-size: 12px; 
-            font-weight: 600; 
-            border-radius: 2em;
-            white-space: nowrap;
-        }
-        pre, code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 14px;}
-        pre { margin: 10px 0 0 0; padding: 10px; background-color: #f6f8fa; border-radius: 6px; white-space: pre-wrap; word-wrap: break-word; }
-        .highlight-error, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
-        .highlight-fatal, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
-        .highlight-critical, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
+        .count-badge { background-color: #586069; color: white; padding: 4px 10px; font-size: 12px; font-weight: 600; border-radius: 2em; white-space: nowrap; }
+        pre { margin: 10px 0 0 0; padding: 10px; background-color: #f6f8fa; border-radius: 6px; white-space: pre-wrap; word-wrap: break-word; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 14px;}
+        .highlight-critical, .highlight-fatal, .highlight-error { color: #d73a49; font-weight: bold; font-size: 18px}
         .highlight-warning { color: #b08800; font-weight: bold; font-size: 18px}
         .highlight-info {color: #007bff; font-weight: bold; font-size: 18px;}
         .highlight-debug {color: #6c757d; font-weight: normal; font-size: 18px;}
@@ -122,72 +87,69 @@ def format_html_body(analysis_result: dict, max_clusters: int) -> str:
     </style>
     """
 
-    # --- 2. Simple Syntax Highlighter ---
-    def highlight_signature(signature_string):
-        s = escape(signature_string) # Use html.escape for security
-        level, message = parse_signature(s)
-        if level in table.keys():
-            category = f"<span class='highlight-{level.lower()}'>{level.upper()}{": " if message else ""}</span>"
-        else:
-            category = f"<span class='highlight-general'>{level}{": " if message else ""}</span>"
-        return category + message
+def _build_html_cluster_card(cluster: dict) -> str:
+    """Builds the HTML for a single cluster card."""
+    signature = cluster.get("signature", "N/A")
+    count = cluster.get("count", 0)
+    rep_log = cluster.get("representative_log", "N/A")
 
-    # --- 3. Build HTML Components ---
+    level, message, config = _parse_log_signature(signature)
+    status_icon = config["icon"]
+    css_class = config["css_class"]
+    
+    # Use html.escape for security on all user-controlled content
+    safe_level = escape(level)
+    safe_message = escape(message)
+    
+    highlighted_signature = f"<span class='{css_class}'>{safe_level}{': ' if safe_message else ''}</span>{safe_message}"
 
+    return f"""
+    <div class="cluster-card">
+        <div class="cluster-header">
+            <table class="header-table">
+                <tr>
+                    <td class="signature-cell">{status_icon} <code>{highlighted_signature}</code></td>
+                    <td class="badge-cell"><span class="count-badge">Count: {count}</span></td>
+                </tr>
+            </table>
+        </div>
+        <div class="cluster-body">
+            <strong>Representative Log:</strong>
+            <pre>{escape(rep_log)}</pre>
+        </div>
+    </div>
+    """
+
+def format_html_body(analysis_result: dict, curr_num: int, total_num: int) -> str:
+    """Takes the full analysis result and builds a final, polished HTML digest email."""
+    styles = _build_html_styles()
+    
     # AI Summary Card
-    ai_summary = analysis_result.get("summary")
     ai_summary_html = ""
-    if ai_summary:
+    if ai_summary := analysis_result.get("summary"):
         ai_summary_html = f"""
         <div class="ai-summary">
-            <div class="ai-summary-header">
-                <span>💡 AI-Generated Summary</span>
-            </div>
-            <div class="ai-summary-body">
-                {escape(ai_summary)}
-            </div>
+            <div class="ai-summary-header"><span>💡 AI-Generated Summary</span></div>
+            <div class="ai-summary-body">{escape(ai_summary)}</div>
         </div>
         """
     
     # Cluster Cards
-    clusters_html = ""
-    for cluster in analysis_result.get("clusters", [])[:max_clusters]:
-        signature = cluster.get("signature", "N/A")
-        count = cluster.get("count", 0)
-        rep_log = cluster.get("representative_log", "N/A")
-        
-        level, message = parse_signature(signature)
-        status_icon = get_icon(level)
-
-        clusters_html += f"""
-        <div class="cluster-card">
-            <div class="cluster-header">
-                <table class="header-table">
-                    <tr>
-                        <td class="signature-cell">{status_icon} <code>{highlight_signature(signature)}</code></td>
-                        <td class="badge-cell"><span class="count-badge">Count: {count}</span></td>
-                    </tr>
-                </table>
-            </div>
-            <div class="cluster-body">
-                <strong>Representative Log:</strong>
-                <pre>{escape(rep_log)}</pre>
-            </div>
-        </div>
-        """
+    cluster_cards = "".join(_build_html_cluster_card(c) for c in analysis_result.get("clusters", []))
     
-
     # Footer
     processed_at = format_timestamp(analysis_result.get("processed_at", "N/A"))
     analysis_id = analysis_result.get("analysis_id", "N/A")
     footer_html = f'<div class="footer">Analysis ID: {analysis_id}<br/>Processed At: {processed_at}</div>'
 
-    # --- 4. Assemble Final HTML ---
+    # Assemble Final HTML
     total_logs = analysis_result.get("total_logs_processed", 0)
     total_clusters = analysis_result.get("total_clusters_found", 0)
     html_title = "📑 Log Analysis Digest"
+    if total_num >  1:
+        html_title += f" ({curr_num}/{total_num})"
     
-    html = f"""
+    return f"""
     <html><head><title>{html_title}</title>{styles}</head><body>
         <div class="container">
             <div class="header"><h1>{html_title}</h1></div>
@@ -195,113 +157,77 @@ def format_html_body(analysis_result: dict, max_clusters: int) -> str:
                 <p>An analysis of recent logs has been completed. Found <strong>{total_clusters}</strong> unique error patterns across <strong>{total_logs}</strong> total logs.</p>
                 {ai_summary_html}
                 <h3>Detected Error Clusters</h3>
-                {clusters_html}
+                {cluster_cards}
             </div>
             {footer_html}
         </div>
     </body></html>
     """
-    return html
 
 
-def format_slack_message(analysis_result: dict, max_clusters: int) -> dict:
-    """
-    Takes the full analysis result and builds a final, polished Slack message
-    with the count badge aligned to the right.
-    """
-    
+# Slack Formatting
+def format_slack_message(analysis_result: dict, curr_num: int, total_num: int) -> dict:
+    """Builds a Slack message using Block Kit."""
     total_clusters = analysis_result.get("total_clusters_found", 0)
     total_logs = analysis_result.get("total_logs_processed", 0)
     analysis_id = analysis_result.get("analysis_id", "N/A")
     timestamp = analysis_result.get("processed_at", "N/A")
-    ai_summary = analysis_result.get("summary")
 
-    # --- Start building the Slack Blocks ---
-    
-    blocks = [
-        {
-            "type": "header",
-            "text": {
-                "type": "plain_text",
-                "text": f":rotating_light: Log Analysis Digest: {total_clusters} Unique Error Patterns Found Across {total_logs} Total Logs",
-                "emoji": True
-            }
-        }
-    ]
+    blocks = [{
+        "type": "header",
+         "text": {"type": "plain_text",
+                  "text": f":rotating_light: Log Analysis Digest{f" ({curr_num}/{total_num})" if (total_num > 1) else ""}",
+                  "emoji": True}
+        }]
+    blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"Found *{total_clusters}* unique patterns across *{total_logs}* total logs."}})
 
-    # Add AI Summary if it exists
-    if ai_summary:
-        blocks.extend([
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": f"💡 *AI Summary:*\n>_{ai_summary}_"}
-            }
-        ])
+    if ai_summary := analysis_result.get("summary"):
+        blocks.extend([{"type": "section", "text": {"type": "mrkdwn", "text": f"💡 *AI Summary:*\n>_{escape(ai_summary)}_"}}])
     
     blocks.append({"type": "divider"})
 
-    # Add a card for each cluster
-    for cluster in analysis_result.get("clusters", [])[:max_clusters]:
+    for cluster in analysis_result.get("clusters", []):
         signature = cluster.get("signature", "N/A")
         count = cluster.get("count", 0)
         rep_log = cluster.get("representative_log", "N/A")
         
-        # Determine the icon based on the signature
-        level, message = parse_signature(signature)
-        status_icon = get_icon(level)
+        level, message, config = _parse_log_signature(signature)
+        status_icon = config["icon"]
 
-        # This block uses an 'accessory' to place the button on the right.
         blocks.append({
             "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"{status_icon} *{level}{":" if message else ""}* {message}"
-            },
-            "accessory": {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "text": f"Count: {count}",
-                    "emoji": True
-                },
-                "value": "count_button" # A value is required for buttons
-            }
+            "text": {"type": "mrkdwn", "text": f"{status_icon} *{level}{':' if message else ''}* {message}"},
+            "accessory": {"type": "button", "text": {"type": "plain_text", "text": f"Count: {count}", "emoji": True}, "value": "count_button"}
         })
-        
-        # Add the representative log in its own section with a code block
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"*Representative Log:*\n```{rep_log}```"
-            }
-        })
-
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*Representative Log:*\n```{rep_log}```"}})
         blocks.append({"type": "divider"})
 
-    # Add the final footer
-    blocks.append({
-        "type": "context",
-        "elements": [{"type": "mrkdwn", "text": f"Analysis ID: `{analysis_id}`\nProcessed At: `{format_timestamp(timestamp)}`"}]})
+    blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": f"Analysis ID: `{analysis_id}` | Processed At: `{format_timestamp(timestamp)}`"}]})
     return {"blocks": blocks}
 
 
+# Plain Text Formatting
 def format_text_body(analysis_result: dict) -> str:
-    """Creates a plain text version of the digest email."""
+    """Creates a plain text version of the digest."""
     total_clusters = analysis_result.get("total_clusters_found", 0)
     total_logs = analysis_result.get("total_logs_processed", 0)
-    analysis_id = analysis_result.get("analysis_id", "N/A")
     timestamp = format_timestamp(analysis_result.get("processed_at", "N/A"))
 
-    text = f"Log Analysis Digest: {total_clusters} unique error patterns found across {total_logs} total logs.\n\n"
+    lines = [
+        f"Log Analysis Digest: {total_clusters} unique error patterns found across {total_logs} total logs.",
+        "==================================================",
+    ]
     
+    if ai_summary := analysis_result.get("summary"):
+        lines.append(f"AI Summary:\n{ai_summary}\n")
+
     for i, cluster in enumerate(analysis_result.get("clusters", [])):
-        text += f"--- Cluster #{i+1} ---\n"
-        text += f"Signature: {cluster.get('signature', 'N/A')}\n"
-        text += f"Count: {cluster.get('count', 0)}\n"
-        text += f"Representative Log: {cluster.get('representative_log', 'N/A')}\n\n"
+        lines.append(f"--- Cluster #{i+1} ---")
+        lines.append(f"Signature: {cluster.get('signature', 'N/A')}")
+        lines.append(f"Count: {cluster.get('count', 0)}")
+        lines.append(f"Representative Log: {cluster.get('representative_log', 'N/A')}\n")
     
-    text += f"Analysis ID: {analysis_id}"
-    text += f"Processed At: {timestamp}"
+    lines.append(f"Analysis ID: {analysis_result.get('analysis_id', 'N/A')}")
+    lines.append(f"Processed At: {timestamp}")
         
-    return text
+    return "\n".join(lines)

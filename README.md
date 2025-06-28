@@ -145,7 +145,7 @@ This project is built using the AWS CDK (Cloud Development Kit).
     cdk deploy \
      --parameters VerifiedSenderEmail="your-verified@email.com" \
      --parameters RecipientEmail="your-alert@email.com" \
-     --parameters SlackWebhookSsmParamName="slack-webhook-url(optional)"
+     --parameters SlackWebhookSsmParamName="slack-webhook-url (required: can be empty string if unused)"
     ```
 ## 🚀 Usage
 ### Sending Test Logs
@@ -154,16 +154,25 @@ After a successful deployment, the CDK will output the `ApiIngestionEndpointUrl`
 1. Locate or create a sample log file (e.g., sample_logs/test.log).
 
 2. Update your local `.env` file with the live API endpoint URL.
+    ```
+    LOG_API=<ApiIngestionEndpointUrl>
+    ```
 
 3. Run the test client to send the log file to the live API:
     ```
     python tests/push_sample_log.py tests/sample_logs/test.log
     ```
+
 4. Check your configured email and Slack channel for the polished alert digest.
+
+    *\* The email will be in spam if sender email is not part of a verified domain.*\
+        *__\*WARNING: UPLOADING LARGE LOGS MAY RESULT IN LOTS OF EMAILS!!!__*\
+    *(Please keep it under 10MB)*
+
 ### Using the Web Frontend
 1. After deployment, navigate to the `FrontendURL` provided in the CDK stack outputs.
 
-2. Paste the `ApiHistoryEndpointUrl` (also from the stack outputs) into the API URL field on the web page.
+2. Paste the `ApiHistoryEndpointUrl` (also from the stack outputs) into the API URL field on the web page.000000
 
 3. Enter the Log Level and Error Message you wish to query.
 

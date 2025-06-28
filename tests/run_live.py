@@ -1,4 +1,4 @@
-# lambda-error-analyzer/run_live.py
+# lambda-error-analyzer/tests/run_live.py
 import json
 import boto3
 from botocore.exceptions import ClientError

@@ -1,92 +1,52 @@
 # lambdas/get_history/app.py
 import os
 import json
-import boto3
-from boto3.dynamodb.conditions import Key
-from datetime import datetime, timedelta, timezone
 
-HISTORY_TABLE_NAME = os.environ.get("HISTORY_TABLE_NAME", "LogHistoryTable")
-ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN")
+# Import the refactored sub-modules
+from request_parser import parse_and_validate_request, InvalidRequestError
+from database_querier import get_occurrence_count
 
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(HISTORY_TABLE_NAME)
+ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*") # Default to wildcard for safety
+
+def build_response(status_code: int, body: dict) -> dict:
+    """Helper function to build the API Gateway proxy response."""
+    return {
+        'statusCode': status_code,
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': ALLOWED_ORIGIN
+        },
+        'body': json.dumps(body)
+    }
 
 def handler(event: dict, context: object) -> dict:
     """
     API Gateway handler to fetch the history for a specific error signature.
-    This can be used by a frontend to display trends and counts.
-    
-    Expected query string parameters:
-    - signature: The error signature to look up (required).
-    - hours: The time window in hours to look back (optional, default is 24).
+    Orchestrates parsing, querying, and responding by calling sub-modules.
     """
     print(f"Received event: {json.dumps(event)}")
     
     try:
-        # Get parameters from API gateway
-        query_params = event.get('queryStringParameters') or {}
-        signature = query_params.get('signature')
-        
-        # Require signature to query
-        if not signature:
-            return {
-                'statusCode': 400,
-                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': ALLOWED_ORIGIN},
-                'body': json.dumps({'message': 'Missing required query parameter: signature'})
-            }
-            
-        try:
-            hours_lookback = int(query_params.get('hours', 24))
-        except ValueError:
-            return {
-                'statusCode': 400,
-                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': ALLOWED_ORIGIN},
-                'body': json.dumps({'message': 'Invalid query parameter: hours must be an integer.'})
-            }
+        # --- 1. Parse and Validate Input ---
+        signature, start_time_iso, hours_lookback = parse_and_validate_request(event)
 
-        # Query DynamoDB for the requested history
-        
-        # Calculate the start time for the query
-        start_time = datetime.now(timezone.utc) - timedelta(hours=hours_lookback)
-        start_time_iso = start_time.isoformat()
-
-        print(f"Querying for signature '{signature}' since {start_time_iso}...")
-
-        # Query the table for items with the given signature (partition key)
-        # and a timestamp (sort key) greater than our start time.
-        response = table.query(
-            KeyConditionExpression=
-                Key('signature').eq(signature) & Key('timestamp').gt(start_time_iso),
-            # We only need the count, so we can make the query more efficient.
-            Select='COUNT'
-        )
-        
-        # The number of items found is the count
-        error_count = response.get('Count', 0)
-        
+        # --- 2. Query the Database ---
+        error_count = get_occurrence_count(signature, start_time_iso)
         print(f"Found {error_count} occurrences in the last {hours_lookback} hours.")
         
-        # Return the result
+        # --- 3. Build the Success Response ---
         result_body = {
             'signature': signature,
             'lookback_hours': hours_lookback,
             'occurrence_count': error_count
         }
+        return build_response(200, result_body)
 
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Content-Type': 'application/json',
-                # Use the specific origin
-                'Access-Control-Allow-Origin': ALLOWED_ORIGIN
-            },
-            'body': json.dumps(result_body)
-        }
+    except InvalidRequestError as e:
+        print(f"Validation Error: {e}")
+        return build_response(400, {'message': str(e)})
 
     except Exception as e:
-        print(f"Error fetching data from DynamoDB: {e}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'message': 'Internal server error.'})
-        }
+        print(f"Internal Server Error: {e}")
+        # It's good practice to not expose internal error details to the client
+        return build_response(500, {'message': 'An internal server error occurred.'})
