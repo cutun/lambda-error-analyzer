@@ -11,9 +11,9 @@ This project was built for the AWS Lambda Hackathon.
 ## 👥 Team
 This project was created by a dedicated team for the AWS Lambda Hackathon.
 
-- Minh Tran @cutun
-- Eric Wang @SUPERIC520
-- Hunter Chan @hchan54
+- Minh Tran @[cutun](https://github.com/cutun)
+- Eric Wang @[SUPERIC520](https://github.com/SUPERIC520)
+- Hunter Chan @[hchan54](https://github.com/hchan54)
 
 ## 🏗️ System Architecture & Alert Flow
 The application is built on a professional-grade, 4-stage, event-driven serverless architecture. Each stage is handled by a dedicated AWS Lambda function that performs a single, specific task. This separation of concerns makes the system robust, scalable, and easy to maintain.
