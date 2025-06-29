@@ -91,7 +91,7 @@ class ProjectStack(Stack):
             # Decrease the buffering time (default is 300 seconds)
             buffering_interval=Duration.seconds(60),
             # Increase the buffering size to accommodate large files
-            buffering_size=Size.mebibytes(128) 
+            buffering_size=Size.mebibytes(64) 
         )
 
         delivery_stream = firehose.DeliveryStream(self, "RawLogsDeliveryStream",
@@ -186,7 +186,7 @@ class ProjectStack(Stack):
         ))
 
         # Aggregate Filter Results
-        
+
         final_alerts_topic = sns.Topic(self, "FinalAlertsTopic")
 
         aggregator_function = _lambda.Function(self, "AggregatorFunction",
