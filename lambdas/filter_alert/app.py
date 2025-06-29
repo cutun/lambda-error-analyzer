@@ -74,11 +74,20 @@ def filter_actionable_clusters(analysis_result: dict) -> list[dict]:
     # Sort the final list of actionable clusters by importance
     actionable_clusters.sort(reverse=True, key=lambda c: c.get("level_rank", 1) * c.get("count", 1))
 
-    return actionable_clusters
+    filtered_analysis = {
+        **analysis_result,
+        "clusters": actionable_clusters,
+        "total_logs_processed": sum(cluster["count"] for cluster in actionable_clusters),
+        "total_clusters_found": len(actionable_clusters)
+    }
+    return filtered_analysis
 
-def process_record(record: dict):
+def process_record(record: dict) -> dict:
     """
     Processes a single record from the DynamoDB stream.
+    
+    Returns:
+        Filtered analysis with the list of clusters needing alert.
     """
     try:
         if record.get('eventName') != 'INSERT':
@@ -93,24 +102,12 @@ def process_record(record: dict):
         analysis_result = unmarshall_dynamodb_item(new_image)
         print(f" -> Successfully parsed analysis for ID: {analysis_result.get('analysis_id')}")
 
-        actionable_clusters = filter_actionable_clusters(analysis_result)
-
-        if actionable_clusters:
-            analysis_result["clusters"] = actionable_clusters
-            analysis_result["total_clusters_found"] = len(actionable_clusters)
-            analysis_result["total_logs_processed"] = sum(c.get("count", 0) for c in actionable_clusters)
-            
-            print(f" -> ✅ Filter PASSED with {len(actionable_clusters)} clusters. Sending to aggregator queue.")
-            SQS_CLIENT.send_message(
-                QueueUrl=AGGREGATOR_QUEUE_URL,
-                MessageBody=json.dumps(analysis_result, default=str)
-            )
-        else:
-            print(" -> ℹ️ All clusters filtered. No actionable clusters found. Suppressing notification.")
-    
+        filtered_analysis = filter_actionable_clusters(analysis_result)
+        return filtered_analysis
     except Exception as e:
         print(f" -> ❌ An unexpected error occurred while processing record: {e}")
-
+        return dict()
+    
 def handler(event, context):
     """
     Triggered by a DynamoDB Stream. It intelligently filters the analysis result
@@ -121,8 +118,15 @@ def handler(event, context):
         print("FATAL: Lambda is not configured correctly. Aborting.")
         return {"statusCode": 500, "body": "Configuration error."}
     
+    list_of_analysis = []
+
     for i, record in enumerate(event.get('Records', [])):
         print(f"\n--- Processing Record #{i+1} ---")
-        process_record(record)
+        list_of_analysis.append(process_record(record))
 
+    for analysis in list_of_analysis:
+        SQS_CLIENT.send_message(
+            QueueUrl=AGGREGATOR_QUEUE_URL,
+            MessageBody=json.dumps(analysis, default=str)
+        )
     return {"statusCode": 200, "body": "Filter process complete."}

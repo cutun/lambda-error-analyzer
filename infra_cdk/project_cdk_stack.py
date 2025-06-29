@@ -19,7 +19,6 @@ from aws_cdk import (
     aws_iam as iam,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
-    aws_apigatewayv2 as apigw,
     CfnOutput
 )
 from constructs import Construct
@@ -89,7 +88,7 @@ class ProjectStack(Stack):
             raw_logs_bucket,
             compression=firehose.Compression.GZIP,
             # Decrease the buffering time (default is 300 seconds)
-            buffering_interval=Duration.seconds(60),
+            buffering_interval=Duration.seconds(120),
             # Increase the buffering size to accommodate large files
             buffering_size=Size.mebibytes(64) 
         )
@@ -135,7 +134,7 @@ class ProjectStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_12,
             code=_lambda.Code.from_asset("lambdas/analyze_logs"),
             handler="app.handler",
-            timeout=Duration.minutes(5),
+            timeout=Duration.minutes(15),
             environment={
                 "DYNAMODB_TABLE_NAME": analysis_results_table.table_name,
                 "BEDROCK_MODEL_ID": "amazon.nova-micro-v1:0"
@@ -181,8 +180,7 @@ class ProjectStack(Stack):
         filter_alert_function.add_event_source(lambda_event_sources.DynamoEventSource(
             analysis_results_table, 
             starting_position=_lambda.StartingPosition.LATEST,
-            batch_size=1,
-            max_batching_window=Duration.seconds(60)
+            batch_size=1
         ))
 
         # Aggregate Filter Results
@@ -207,9 +205,9 @@ class ProjectStack(Stack):
         
         aggregator_function.add_event_source(lambda_event_sources.SqsEventSource(
             aggregator_queue,
-            # Collect messages for up to five minutes before triggering.
+            # Collect messages for up to ten minutes before triggering.
             max_batching_window=Duration.minutes(5),
-            batch_size=1000
+            batch_size=10000
         ))
 
         # === STAGE 4: Alerting ===

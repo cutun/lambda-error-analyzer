@@ -58,7 +58,7 @@ def get_logs_from_s3(bucket: str, key: str) -> List[str]:
         return []
 
 
-def persist_analysis_to_dynamodb(analysis_result: dict):
+def batch_persist_analysis_to_dynamodb(analysis_results: list[dict]):
     """
     Saves the final analysis result dictionary to DynamoDB.
     """
@@ -97,7 +97,6 @@ def process_log_batch(raw_log_batch):
     }
     
     # Persist the result to DynamoDB (Fourth Step)
-    persist_analysis_to_dynamodb(analysis_result)
     return analysis_result
         
 
@@ -131,12 +130,13 @@ def handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
         batch_lines = raw_logs[start_index:end_index]
         analysis_result = process_log_batch(batch_lines)
         results.append(analysis_result)
-        time.sleep(1) # Avoid spamming api calls
+        # time.sleep(1) # Avoid spamming api calls
+    
+    batch_persist_analysis_to_dynamodb(results)
 
     if not raw_logs:
         print("Log file was empty or could not be read. Exiting.")
         return {"statusCode": 200, "body": json.dumps("Log file empty.")}
-
 
     # Return a success response (Fifth Step)
     return {

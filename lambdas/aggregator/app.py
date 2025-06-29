@@ -32,7 +32,7 @@ def merge_analysis_results(records: list[dict]) -> dict:
             body_str = record.get('body', '{}')
             body_data = json.loads(body_str)
             
-            # --- FIX: Handle both direct SQS and SNS-to-SQS messages ---
+            # Handle both direct SQS and SNS-to-SQS messages
             if 'Message' in body_data:
                 # This handles messages coming from an SNS topic subscription
                 analysis_result = json.loads(body_data['Message'])
@@ -41,14 +41,15 @@ def merge_analysis_results(records: list[dict]) -> dict:
                 analysis_result = body_data
             
             total_logs += analysis_result.get("total_logs_processed", 0)
-            if analysis_id == "consolidated-digest" and analysis_result.get("analysis_id"):
-                 analysis_id = analysis_result.get("analysis_id")
+            if analysis_id == "consolidated-digest" and analysis_result["analysis_id"]:
+                analysis_id += analysis_result["analysis_id"]
             if summary := analysis_result.get("summary"):
                 all_summaries.append(summary)
 
             # Merge clusters, consolidating counts for the same signature
             for cluster in analysis_result.get("clusters", []):
                 sig = cluster.get("signature")
+                # if cluster.get("count", 0) < 100: break # for testing
                 if not sig: continue
                 if sig not in all_clusters:
                     all_clusters[sig] = cluster
