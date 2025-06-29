@@ -185,6 +185,8 @@ class ProjectStack(Stack):
             max_batching_window=Duration.seconds(60)
         ))
 
+        # Aggregate Filter Results
+        
         final_alerts_topic = sns.Topic(self, "FinalAlertsTopic")
 
         aggregator_function = _lambda.Function(self, "AggregatorFunction",

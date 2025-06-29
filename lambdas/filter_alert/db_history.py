@@ -27,7 +27,7 @@ def unmarshall_dynamodb_item(ddb_item: dict) -> dict:
     return {k: DDB_DESERIALIZER.deserialize(v) for k, v in ddb_item.items()}
 
 
-# --- BATCH DATA ACCESS FUNCTIONS ---
+# BATCH DATA ACCESS FUNCTIONS
 
 def get_batch_historical_timestamps(signatures: list[str]) -> dict[str, list[str]]:
     """
