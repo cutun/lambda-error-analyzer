@@ -167,7 +167,7 @@ After a successful deployment, the CDK will output the `ApiIngestionEndpointUrl`
 
     *\* The email will be in spam if sender email is not part of a verified domain.*\
         *__\*WARNING: UPLOADING LARGE LOGS MAY RESULT IN LOTS OF EMAILS!!!__*\
-    *(Please keep it under 10MB)*
+    *(Please keep it under a few hundred lines)*
 
 ### Using the Web Frontend
 1. After deployment, navigate to the `FrontendURL` provided in the CDK stack outputs.
