@@ -22,60 +22,61 @@ The application is built on a professional-grade, 4-stage, event-driven serverle
 ### Visual Architecture Diagram
 ```mermaid
 graph TD
-    %% Define styles for different node types
-    classDef lambda fill:#FF9900,stroke:#333,stroke-width:2px,color:#fff;
-    classDef db fill:#2E73B8,stroke:#333,stroke-width:2px,color:#fff;
+    %% ───────── Styles ─────────
+    classDef lambda  fill:#FF9900,stroke:#333,stroke-width:2px,color:#fff;
+    classDef db      fill:#2E73B8,stroke:#333,stroke-width:2px,color:#fff;
     classDef service fill:#232F3E,stroke:#333,stroke-width:2px,color:#fff;
-    classDef topic fill:#D84B9A,stroke:#333,stroke-width:2px,color:#fff;
-    classDef user fill:#fff,stroke:#333,stroke-width:2px,color:#333;
-    classDef decision stroke-dasharray: 5 5;
+    classDef topic   fill:#D84B9A,stroke:#333,stroke-width:2px,color:#fff;
+    classDef user    fill:#fff,stroke:#333,stroke-width:2px,color:#333;
+    classDef decision stroke-dasharray:5 5;
 
-    %% STAGE 1
+    %% ───────── STAGE 1 – INGESTION ─────────
     subgraph INGESTION
         A[External Logs] --> API_GW[API Gateway];
         API_GW -- /logs --> IngestLambda(IngestLog Lambda);
-        IngestLambda --> RawLogs[(S3 Raw Logs)];
+        IngestLambda --> Firehose[Kinesis Firehose];
+        Firehose --> RawLogs[(S3 Raw Logs)];
     end
 
-    %% STAGE 2
+    %% ───────── STAGE 2 – ANALYSIS ─────────
     subgraph ANALYSIS
         RawLogs -- S3 Event --> AnalyzeLambda(AnalyzeLog Lambda);
         AnalyzeLambda -- AI Summary --> AnalysisDB[(Analysis Results DB)];
     end
 
-    %% STAGE 3
+    %% ───────── STAGE 3 – FILTERING ─────────
     subgraph FILTERING
         AnalysisDB -- DynamoDB Stream --> FilterLambda(FilterAlert Lambda);
         FilterLambda <--> HistoryDB[(Historical Stats DB)];
         FilterLambda --> IsWorthy{Is Alert Worthy?};
     end
 
-    %% STAGE 4
+    %% ───────── STAGE 4 – NOTIFICATION ─────────
     subgraph NOTIFICATION
         IsWorthy -- Yes --> AlertTopic(SNS Topic);
-        IsWorthy -- No --> Stop(Stop);
+        IsWorthy -- No  --> Stop(Stop);
         AlertTopic -- SNS Trigger --> SendLambda(SendAlert Lambda);
         SendLambda --> Notifications{Email & Slack};
     end
     
-    %% STAGE 5
+    %% ───────── STAGE 5 – UI ─────────
     subgraph UI
         Developer[Developer] --> Frontend[Web UI];
-        Frontend -- /history API Call --> API_GW;
+        Frontend -- /history --> API_GW;
         API_GW -- /history --> GetHistoryLambda(GetHistory Lambda);
         GetHistoryLambda --> HistoryDB;
     end
-    
-    %% Apply styles
+
+    %% ───────── Apply styles ─────────
     class Developer user;
     class IngestLambda,AnalyzeLambda,FilterLambda,SendLambda,GetHistoryLambda lambda;
     class RawLogs,AnalysisDB,HistoryDB db;
-    class API_GW service;
+    class API_GW,Firehose service;
     class AlertTopic topic;
     class IsWorthy,Stop,Notifications decision;
 ```
 ### Step-by-Step Data Flow
-1. **Ingestion:** A client sends a log file to a **public API** Gateway endpoint. This triggers the `ingest_log` Lambda, which saves the raw log file to an S3 bucket.
+1. **Ingestion:** A client sends a log file to a **public API** Gateway endpoint which invokes the `ingest_log` lambda. The function immediately streams the log record into an `Amazon Kinesis Data Firehose` delivery stream, and Firehose then deposits the raw log object into the S3 bucket.
 
 2. **Analysis:** The new object in S3 triggers the `AnalyzeLog` Lambda. This function reads the file, clusters logs by signature, and uses **Amazon Bedrock** to generate an AI summary. The complete, structured analysis result is then saved to an **Analysis Results DynamoDB Table**.
 
@@ -105,16 +106,18 @@ This project is built using the AWS CDK (Cloud Development Kit).
 
 ### Prerequisites
 1. An AWS Account with credentials configured locally (`aws configure`).
+   * **Default region name:** `us-east-1`  
+   * **Default output format:** `json` 
+   * **IAM user policies:**  `AdministratorAccess`, `AmazonBedrockFullAccess`, `AmazonDynamoDBFullAccess_v2`,  
+   `AmazonS3ReadOnlyAccess`, `AmazonSNSFullAccess`, `CloudWatchFullAccess`
 
-2. Node.js and npm installed.
+2. Python, Node.js, and npm installed.
 
 3. AWS CDK Toolkit installed (`npm install -g aws-cdk`).
 
-4. Docker Desktop installed and running.
+4. A verified email identity in Amazon SES.
 
-5. A verified email identity in Amazon SES.
-
-6. **Bedrock Model Access Enabled:** You must manually enable access to the foundation models in the AWS Bedrock console.
+5. **Bedrock Model Access Enabled:** You must manually enable access to the foundation models in the AWS Bedrock console.
    * Navigate to **Amazon Bedrock** in the AWS Console.
    * In the bottom-left menu, click **Model access**.
    * Click **Manage model access** and grant access to the **Amazon** models, which includes "Nova Micro".
@@ -167,7 +170,7 @@ After a successful deployment, the CDK will output the `ApiIngestionEndpointUrl`
 
     *\* The email will be in spam if sender email is not part of a verified domain.*\
         *__\*WARNING: UPLOADING LARGE LOGS MAY RESULT IN LOTS OF EMAILS!!!__*\
-    *(Please keep it under a few hundred lines)*
+    *(Please keep it under 10MB)*
 
 ### Using the Web Frontend
 1. After deployment, navigate to the `FrontendURL` provided in the CDK stack outputs.
